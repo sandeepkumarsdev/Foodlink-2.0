@@ -45,7 +45,7 @@ if (process.env.POSTGRES_URL) {
     console.warn('WARNING: POSTGRES_URL is missing in Vercel. Falling back to an ephemeral in-memory PGlite database for demonstration purposes.');
     let pgliteInstance: any = null;
     let isReady = false;
-    let initQueue: Array<() => void> = [];
+    let initQueue: Array<(val?: any) => void> = [];
 
     const ensureDb = async () => {
       if (isReady) return pgliteInstance;

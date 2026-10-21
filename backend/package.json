@@ -11,6 +11,7 @@
   "dependencies": {
     "@electric-sql/pglite": "^0.5.8",
     "@google/genai": "^2.4.0",
+    "@supabase/supabase-js": "^2.118.0",
     "cors": "^2.8.5",
     "dotenv": "^17.2.3",
     "express": "^4.21.2",
