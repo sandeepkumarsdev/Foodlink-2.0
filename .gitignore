@@ -6,3 +6,6 @@ coverage/
 *.log
 .env*
 !.env.example
+supabase-mcp/
+.vscode/mcp.json
+.agents/mcp_config.json
