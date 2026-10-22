@@ -5,6 +5,7 @@ import fs from 'fs';
 import * as dotenv from 'dotenv';
 import { User, FoodPost, Claim, NotificationItem } from '../types/index.js';
 
+dotenv.config({ path: path.resolve(process.cwd(), 'backend/.env') });
 dotenv.config();
 
 export interface DbClient {
