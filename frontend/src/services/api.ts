@@ -139,6 +139,24 @@ export const api = {
     return data;
   },
 
+  async googleAuth(payload: {
+    email: string;
+    name?: string;
+    avatarUrl?: string;
+    userType?: string;
+    college?: string;
+    canteenName?: string;
+  }): Promise<{ user: User; token: string; isNew: boolean }> {
+    const res = await fetch('/api/auth/google', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error || 'Failed to authenticate with Google');
+    return data;
+  },
+
   async toggleCanteenVerification(userId: string): Promise<{ success: boolean; user: User }> {
     const res = await fetch(`/api/users/${userId}/verify-canteen`, { method: 'POST' });
     const data = await res.json();

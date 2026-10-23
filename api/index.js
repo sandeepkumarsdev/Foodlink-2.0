@@ -29325,6 +29325,48 @@ app.post("/api/auth/register", async (req, res) => {
     res.status(500).json({ error: "Database error during registration" });
   }
 });
+app.post("/api/auth/google", async (req, res) => {
+  const { email, name, avatarUrl, userType = "USER", college = "Stanford Central Campus", canteenName } = req.body;
+  if (!email) {
+    return res.status(400).json({ error: "Google email is required" });
+  }
+  try {
+    const existing = await query(`SELECT * FROM users WHERE LOWER(email) = LOWER($1) LIMIT 1`, [email]);
+    if (existing.rows.length > 0) {
+      const user = mapRowToUser(existing.rows[0]);
+      if (avatarUrl && (!user.avatarUrl || user.avatarUrl.includes("unsplash"))) {
+        await query(`UPDATE users SET avatar_url = $1 WHERE id = $2`, [avatarUrl, user.id]);
+        user.avatarUrl = avatarUrl;
+      }
+      return res.json({ user, token: "mock-jwt-token-" + user.id, isNew: false });
+    }
+    const newId = "usr_" + crypto.randomUUID().slice(0, 8);
+    const resolvedName = name || email.split("@")[0] || "Google User";
+    const resolvedAvatar = avatarUrl || "https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?auto=format&fit=crop&w=200&q=80";
+    const isCollege = userType === "COLLEGE";
+    const insertRes = await query(
+      `INSERT INTO users (id, name, email, phone, user_type, college, canteen_name, is_verified, avatar_url, created_at)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, NOW())
+       RETURNING *`,
+      [
+        newId,
+        resolvedName,
+        email,
+        "+1 (555) 000-0000",
+        userType,
+        college,
+        isCollege ? canteenName || `${college} Canteen` : null,
+        isCollege ? false : true,
+        resolvedAvatar
+      ]
+    );
+    const newUser = mapRowToUser(insertRes.rows[0]);
+    return res.status(201).json({ user: newUser, token: "mock-jwt-token-" + newUser.id, isNew: true });
+  } catch (err) {
+    console.error("Google auth error:", err);
+    res.status(500).json({ error: "Database error during Google authentication", details: err.message });
+  }
+});
 app.get("/api/users", async (req, res) => {
   try {
     const result = await query(`SELECT * FROM users ORDER BY created_at ASC`);

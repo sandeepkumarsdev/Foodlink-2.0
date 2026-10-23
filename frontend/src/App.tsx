@@ -344,6 +344,16 @@ export default function App() {
                 setIsAuthenticating(false);
               }
             }}
+            onGoogleAuth={async (payload) => {
+              setIsAuthenticating(true);
+              try {
+                const res = await api.googleAuth(payload);
+                setCurrentUser(res.user);
+                fetchData();
+              } finally {
+                setIsAuthenticating(false);
+              }
+            }}
             onSelectUser={(u) => {
               setCurrentUser(u);
               if (u.userType === 'COLLEGE') setActiveTab('canteen');
