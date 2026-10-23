@@ -21,6 +21,40 @@ const isProduction = process.env.NODE_ENV === 'production';
 
 app.use(express.json({ limit: '10mb' }));
 
+let dbInitPromise: Promise<void> | null = null;
+export async function ensureDbInitialized(): Promise<void> {
+  if (!dbInitPromise) {
+    dbInitPromise = initPostgres().catch((err) => {
+      console.error('Failed to initialize PostgreSQL:', err);
+      dbInitPromise = null;
+      throw err;
+    });
+  }
+  return dbInitPromise;
+}
+
+// URL Normalization and DB Initialization Middleware for Vercel Serverless & Local
+app.use(async (req: Request, res: Response, next) => {
+  const original = (req.headers['x-forwarded-uri'] as string) || (req.headers['x-matched-path'] as string);
+  if (original && original !== '/api' && req.url === '/api') {
+    req.url = original;
+  }
+  if (!req.url.startsWith('/api')) {
+    req.url = '/api' + (req.url.startsWith('/') ? req.url : '/' + req.url);
+  }
+
+  try {
+    await ensureDbInitialized();
+    next();
+  } catch (err: any) {
+    console.error('Database connection/initialization error:', err);
+    res.status(500).json({
+      error: 'Database connection failed. Please ensure POSTGRES_URL is set in your Vercel Project Settings.',
+      details: err.message,
+    });
+  }
+});
+
 // Concurrency mutex lock per foodPostId to guarantee atomic claim execution in Node
 const claimLocks = new Map<string, Promise<void>>();
 
@@ -62,65 +96,67 @@ function sseBroadcast(event: RealtimeEvent) {
   }
 }
 
-// Heartbeat to keep SSE connections alive
-setInterval(() => {
-  for (const client of sseClients) {
-    try {
-      client.write(':keep-alive\n\n');
-    } catch {
-      sseClients.delete(client);
-    }
-  }
-}, 15000);
-
-// Background job: automatically expire food items whose deadline has passed in PostgreSQL
-setInterval(async () => {
-  try {
-    const expiredRes = await query(
-      `SELECT * FROM food_posts WHERE status = 'AVAILABLE' AND collection_deadline < NOW()`
-    );
-
-    if (expiredRes.rows.length > 0) {
-      for (const row of expiredRes.rows) {
-        await query(`UPDATE food_posts SET status = 'EXPIRED' WHERE id = $1`, [row.id]);
-        const post = mapRowToFoodPost({ ...row, status: 'EXPIRED' });
-
-        // Notify canteen authorized users
-        const canteenUserRes = await query(
-          `SELECT * FROM users WHERE college = $1 AND canteen_name = $2 LIMIT 1`,
-          [post.collegeName, post.canteenName]
-        );
-
-        if (canteenUserRes.rows[0]) {
-          const notifId = 'notif_' + crypto.randomUUID();
-          await query(
-            `INSERT INTO notifications (id, user_id, food_post_id, title, message, type, read, created_at)
-             VALUES ($1, $2, $3, $4, $5, $6, $7, NOW())`,
-            [
-              notifId,
-              canteenUserRes.rows[0].id,
-              post.id,
-              'Food Post Expired ⏰',
-              `Collection deadline has passed for "${post.foodName}". Marked as EXPIRED in PostgreSQL.`,
-              'DEADLINE_WARNING',
-              false,
-            ]
-          );
-        }
-
-        // Broadcast to clients
-        sseBroadcast({
-          type: 'FOOD_EXPIRED',
-          foodPost: post,
-          foodPostId: post.id,
-          timestamp: new Date().toISOString(),
-        });
+if (!process.env.VERCEL) {
+  // Heartbeat to keep SSE connections alive
+  setInterval(() => {
+    for (const client of sseClients) {
+      try {
+        client.write(':keep-alive\n\n');
+      } catch {
+        sseClients.delete(client);
       }
     }
-  } catch (err) {
-    console.error('Error in background expiry worker:', err);
-  }
-}, 10000);
+  }, 15000);
+
+  // Background job: automatically expire food items whose deadline has passed in PostgreSQL
+  setInterval(async () => {
+    try {
+      const expiredRes = await query(
+        `SELECT * FROM food_posts WHERE status = 'AVAILABLE' AND collection_deadline < NOW()`
+      );
+
+      if (expiredRes.rows.length > 0) {
+        for (const row of expiredRes.rows) {
+          await query(`UPDATE food_posts SET status = 'EXPIRED' WHERE id = $1`, [row.id]);
+          const post = mapRowToFoodPost({ ...row, status: 'EXPIRED' });
+
+          // Notify canteen authorized users
+          const canteenUserRes = await query(
+            `SELECT * FROM users WHERE college = $1 AND canteen_name = $2 LIMIT 1`,
+            [post.collegeName, post.canteenName]
+          );
+
+          if (canteenUserRes.rows[0]) {
+            const notifId = 'notif_' + crypto.randomUUID();
+            await query(
+              `INSERT INTO notifications (id, user_id, food_post_id, title, message, type, read, created_at)
+               VALUES ($1, $2, $3, $4, $5, $6, $7, NOW())`,
+              [
+                notifId,
+                canteenUserRes.rows[0].id,
+                post.id,
+                'Food Post Expired ⏰',
+                `Collection deadline has passed for "${post.foodName}". Marked as EXPIRED in PostgreSQL.`,
+                'DEADLINE_WARNING',
+                false,
+              ]
+            );
+          }
+
+          // Broadcast to clients
+          sseBroadcast({
+            type: 'FOOD_EXPIRED',
+            foodPost: post,
+            foodPostId: post.id,
+            timestamp: new Date().toISOString(),
+          });
+        }
+      }
+    } catch (err) {
+      console.error('Error in background expiry worker:', err);
+    }
+  }, 10000);
+}
 
 // ================= API ROUTES =================
 
