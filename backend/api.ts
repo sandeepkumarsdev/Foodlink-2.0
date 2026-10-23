@@ -1,4 +1,4 @@
-import app, { ensureDbInitialized } from '../backend/app';
+import app, { ensureDbInitialized } from './app.js';
 
 export default async function handler(req: any, res: any) {
   // If Vercel rewrote /api/... to /api/index, restore the original URL from headers
