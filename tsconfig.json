@@ -8,9 +8,5 @@
     "skipLibCheck": true,
     "forceConsistentCasingInFileNames": true
   },
-  "include": ["api/**/*"],
-  "references": [
-    { "path": "./frontend" },
-    { "path": "./backend" }
-  ]
+  "include": ["api/**/*", "backend/**/*"]
 }

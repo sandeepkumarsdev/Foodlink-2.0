@@ -4,8 +4,8 @@
   "version": "0.0.0",
   "type": "module",
   "scripts": {
-    "dev": "tsx server.ts",
-    "start": "tsx server.ts",
+    "dev": "tsx app.ts",
+    "start": "tsx app.ts",
     "build": "echo 'No build required'"
   },
   "dependencies": {

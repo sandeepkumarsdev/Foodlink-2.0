@@ -10,8 +10,7 @@
     "dev": "concurrently -n \"backend,frontend\" -c \"blue,green\" \"npm run dev:backend\" \"npm run dev:frontend\"",
     "dev:frontend": "npm run dev --workspace=foodlink-frontend",
     "dev:backend": "npm run dev --workspace=foodlink-backend",
-    "build:api": "esbuild api/index.ts --bundle --platform=node --format=esm --target=node18 --outfile=api/index.js --external:pg-native --external:lightningcss --external:@electric-sql/pglite",
-    "build": "npm run build --workspace=foodlink-frontend && node scripts/copy-dist.js && npm run build:api",
+    "build": "npm run build --workspace=foodlink-frontend && node scripts/copy-dist.js",
     "install:all": "npm install"
   },
   "dependencies": {
