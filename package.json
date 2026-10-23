@@ -6,10 +6,13 @@
     "backend"
   ],
   "scripts": {
-    "dev": "npm run dev --workspaces --if-present",
+    "dev": "concurrently -n \"backend,frontend\" -c \"blue,green\" \"npm run dev:backend\" \"npm run dev:frontend\"",
     "dev:frontend": "npm run dev --workspace=foodlink-frontend",
     "dev:backend": "npm run dev --workspace=foodlink-backend",
     "build": "npm run build --workspace=foodlink-frontend",
     "install:all": "npm install"
+  },
+  "devDependencies": {
+    "concurrently": "^10.0.6"
   }
 }
