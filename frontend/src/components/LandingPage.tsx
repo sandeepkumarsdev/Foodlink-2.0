@@ -91,6 +91,7 @@ export const LandingPage: React.FC<LandingPageProps> = ({
   const [testGoogleName, setTestGoogleName] = useState('');
   const [modalTab, setModalTab] = useState<'demo' | 'setup'>('demo');
   const [gisRendered, setGisRendered] = useState(false);
+  const [isGoogleAuthenticating, setIsGoogleAuthenticating] = useState(false);
 
   const googleClientId = 
     import.meta.env.VITE_GOOGLE_CLIENT_ID || 
@@ -141,22 +142,6 @@ export const LandingPage: React.FC<LandingPageProps> = ({
             cancel_on_tap_outside: true,
           });
 
-          // Render into container if present
-          const btnEl = document.getElementById('gsi-button-container');
-          if (btnEl) {
-            btnEl.innerHTML = '';
-            window.google.accounts.id.renderButton(btnEl, {
-              type: 'standard',
-              theme: 'outline',
-              size: 'large',
-              text: authMode === 'LOGIN' ? 'signin_with' : 'signup_with',
-              shape: 'pill',
-              width: 320,
-              logo_alignment: 'left',
-            });
-            setGisRendered(true);
-          }
-
           // Also trigger One-Tap prompt if eligible
           try {
             window.google.accounts.id.prompt();
@@ -206,15 +191,91 @@ export const LandingPage: React.FC<LandingPageProps> = ({
   };
 
   const handleGoogleButtonClick = () => {
-    if (isGoogleConfigured && window.google?.accounts?.id) {
+    setError(null);
+
+    // If Google OAuth2 client is loaded in window, launch the genuine Google Sign-In popup!
+    if (window.google?.accounts?.oauth2) {
       try {
-        window.google.accounts.id.prompt();
-      } catch {
+        setIsGoogleAuthenticating(true);
+
+        const tokenClient = window.google.accounts.oauth2.initTokenClient({
+          client_id: googleClientId,
+          scope: 'openid email profile',
+          callback: async (tokenResponse: any) => {
+            if (tokenResponse.error) {
+              setIsGoogleAuthenticating(false);
+              if (tokenResponse.error === 'access_denied') return; // User simply closed the popup
+              setError(`Google Sign-In Error: ${tokenResponse.error_description || tokenResponse.error}`);
+              return;
+            }
+
+            try {
+              // Fetch user profile from Google's standard UserInfo endpoint
+              const userInfoRes = await fetch('https://www.googleapis.com/oauth2/v3/userinfo', {
+                headers: {
+                  Authorization: `Bearer ${tokenResponse.access_token}`,
+                },
+              });
+
+              if (!userInfoRes.ok) {
+                throw new Error('Could not fetch user profile from Google');
+              }
+
+              const profile = await userInfoRes.json();
+              if (!profile.email) {
+                throw new Error('Google did not return an email address');
+              }
+
+              await onGoogleAuth({
+                email: profile.email,
+                name: profile.name || profile.given_name || 'Google User',
+                avatarUrl: profile.picture,
+                userType: selectedRole,
+                college,
+                canteenName: selectedRole === 'COLLEGE' ? canteenName : undefined,
+              });
+            } catch (err: any) {
+              console.error('Google profile sync error:', err);
+              setError(err.message || 'Failed to authenticate Google user');
+            } finally {
+              setIsGoogleAuthenticating(false);
+            }
+          },
+          error_callback: (err: any) => {
+            setIsGoogleAuthenticating(false);
+            console.error('Google OAuth popup error:', err);
+            setError(
+              err.message ||
+                'Google sign-in popup encountered an error. Please verify Authorized JavaScript origins in Google Cloud Console.'
+            );
+          },
+        });
+
+        tokenClient.requestAccessToken({ prompt: 'select_account' });
+        return;
+      } catch (err: any) {
+        setIsGoogleAuthenticating(false);
+        console.error('Failed to trigger Google popup:', err);
+        setError('Error initiating Google sign-in: ' + err.message);
+        return;
+      }
+    }
+
+    // Fallback: If Google script has not loaded yet, wait briefly or open the setup modal
+    setIsGoogleAuthenticating(true);
+    let attempts = 0;
+    const checkTimer = setInterval(() => {
+      attempts++;
+      if (window.google?.accounts?.oauth2) {
+        clearInterval(checkTimer);
+        setIsGoogleAuthenticating(false);
+        handleGoogleButtonClick();
+      } else if (attempts > 6) {
+        clearInterval(checkTimer);
+        setIsGoogleAuthenticating(false);
         setShowGoogleModal(true);
       }
-    } else {
-      setShowGoogleModal(true);
-    }
+    }, 250);
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -365,31 +426,40 @@ export const LandingPage: React.FC<LandingPageProps> = ({
                 </div>
               </div>
 
+              {/* Global Error Banner */}
+              {error && (
+                <div className="p-3 rounded-xl bg-rose-50 border border-rose-200 text-xs font-semibold text-rose-700 flex items-start gap-2 animate-in fade-in">
+                  <AlertCircle className="w-4 h-4 shrink-0 text-rose-600 mt-0.5" />
+                  <div className="leading-snug">
+                    {error}
+                  </div>
+                </div>
+              )}
+
               {/* Google Authentication Section */}
               <div className="space-y-2 pt-1">
-                {/* Official Google Identity Services rendered button */}
-                <div 
-                  id="gsi-button-container" 
-                  className={`flex justify-center w-full min-h-[40px] ${gisRendered ? 'block' : 'hidden'}`} 
-                />
-
-                {/* Branded fallback button when GIS is initializing or for manual prompt */}
-                {!gisRendered && (
-                  <button
-                    type="button"
-                    onClick={handleGoogleButtonClick}
-                    disabled={isAuthenticating}
-                    className="w-full py-2.5 px-4 rounded-xl bg-white hover:bg-slate-50 text-slate-800 font-semibold text-xs border border-slate-300 shadow-2xs hover:shadow-xs transition-all flex items-center justify-center gap-2.5 cursor-pointer group active:scale-98 disabled:opacity-50"
-                  >
+                <button
+                  type="button"
+                  onClick={handleGoogleButtonClick}
+                  disabled={isAuthenticating || isGoogleAuthenticating}
+                  className="w-full py-2.5 px-4 rounded-xl bg-white hover:bg-slate-50 text-slate-800 font-semibold text-xs border border-slate-300 shadow-2xs hover:shadow-xs transition-all flex items-center justify-center gap-2.5 cursor-pointer group active:scale-98 disabled:opacity-60"
+                >
+                  {isGoogleAuthenticating ? (
+                    <div className="w-4 h-4 border-2 border-emerald-600 border-t-transparent rounded-full animate-spin shrink-0" />
+                  ) : (
                     <GoogleIcon className="w-4 h-4 shrink-0" />
-                    <span className="font-bold text-slate-700">
-                      {authMode === 'LOGIN' ? 'Sign in with Google' : 'Sign up with Google'}
-                    </span>
-                    <span className="text-[10px] text-emerald-800 bg-emerald-100/70 font-semibold px-2 py-0.5 rounded-full ml-auto border border-emerald-200/60">
-                      {selectedRole === 'COLLEGE' ? 'Canteen' : 'Student'}
-                    </span>
-                  </button>
-                )}
+                  )}
+                  <span className="font-bold text-slate-700">
+                    {isGoogleAuthenticating
+                      ? 'Connecting to Google...'
+                      : authMode === 'LOGIN'
+                        ? 'Sign in with Google'
+                        : 'Sign up with Google'}
+                  </span>
+                  <span className="text-[10px] text-emerald-800 bg-emerald-100/70 font-semibold px-2 py-0.5 rounded-full ml-auto border border-emerald-200/60">
+                    {selectedRole === 'COLLEGE' ? 'Canteen' : 'Student'}
+                  </span>
+                </button>
 
                 <div className="flex items-center justify-between text-[11px] px-1 text-slate-500">
                   <span className="flex items-center gap-1 text-slate-400">
@@ -419,11 +489,6 @@ export const LandingPage: React.FC<LandingPageProps> = ({
 
               {/* Auth Form */}
               <form onSubmit={handleSubmit} className="space-y-4">
-                {error && (
-                  <div className="p-3 rounded-xl bg-rose-50 border border-rose-200 text-xs font-semibold text-rose-700">
-                    {error}
-                  </div>
-                )}
 
                 {authMode === 'REGISTER' && (
                   <div>
