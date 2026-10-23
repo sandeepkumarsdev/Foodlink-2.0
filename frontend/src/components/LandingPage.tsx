@@ -90,8 +90,12 @@ export const LandingPage: React.FC<LandingPageProps> = ({
   const [testGoogleEmail, setTestGoogleEmail] = useState('');
   const [testGoogleName, setTestGoogleName] = useState('');
   const [modalTab, setModalTab] = useState<'demo' | 'setup'>('demo');
+  const [gisRendered, setGisRendered] = useState(false);
 
-  const googleClientId = import.meta.env.VITE_GOOGLE_CLIENT_ID || '';
+  const googleClientId = 
+    import.meta.env.VITE_GOOGLE_CLIENT_ID || 
+    '180715761304-s92fq8914t04pf7kjsg64bagsadnmdru.apps.googleusercontent.com';
+
   const isGoogleConfigured = Boolean(
     googleClientId && 
     !googleClientId.includes('YOUR_GOOGLE') && 
@@ -148,7 +152,16 @@ export const LandingPage: React.FC<LandingPageProps> = ({
               text: authMode === 'LOGIN' ? 'signin_with' : 'signup_with',
               shape: 'pill',
               width: 320,
+              logo_alignment: 'left',
             });
+            setGisRendered(true);
+          }
+
+          // Also trigger One-Tap prompt if eligible
+          try {
+            window.google.accounts.id.prompt();
+          } catch {
+            // One-tap prompt suppressed in some browser settings
           }
         } catch (e) {
           console.warn('GIS initialization error:', e);
@@ -354,23 +367,29 @@ export const LandingPage: React.FC<LandingPageProps> = ({
 
               {/* Google Authentication Section */}
               <div className="space-y-2 pt-1">
-                <button
-                  type="button"
-                  onClick={handleGoogleButtonClick}
-                  disabled={isAuthenticating}
-                  className="w-full py-2.5 px-4 rounded-xl bg-white hover:bg-slate-50 text-slate-800 font-semibold text-xs border border-slate-300 shadow-2xs hover:shadow-xs transition-all flex items-center justify-center gap-2.5 cursor-pointer group active:scale-98 disabled:opacity-50"
-                >
-                  <GoogleIcon className="w-4 h-4 shrink-0" />
-                  <span className="font-bold text-slate-700">
-                    {authMode === 'LOGIN' ? 'Sign in with Google' : 'Sign up with Google'}
-                  </span>
-                  <span className="text-[10px] text-emerald-800 bg-emerald-100/70 font-semibold px-2 py-0.5 rounded-full ml-auto border border-emerald-200/60">
-                    {selectedRole === 'COLLEGE' ? 'Canteen' : 'Student'}
-                  </span>
-                </button>
+                {/* Official Google Identity Services rendered button */}
+                <div 
+                  id="gsi-button-container" 
+                  className={`flex justify-center w-full min-h-[40px] ${gisRendered ? 'block' : 'hidden'}`} 
+                />
 
-                {/* Hidden GIS container for native Google button when configured */}
-                <div id="gsi-button-container" className="hidden" />
+                {/* Branded fallback button when GIS is initializing or for manual prompt */}
+                {!gisRendered && (
+                  <button
+                    type="button"
+                    onClick={handleGoogleButtonClick}
+                    disabled={isAuthenticating}
+                    className="w-full py-2.5 px-4 rounded-xl bg-white hover:bg-slate-50 text-slate-800 font-semibold text-xs border border-slate-300 shadow-2xs hover:shadow-xs transition-all flex items-center justify-center gap-2.5 cursor-pointer group active:scale-98 disabled:opacity-50"
+                  >
+                    <GoogleIcon className="w-4 h-4 shrink-0" />
+                    <span className="font-bold text-slate-700">
+                      {authMode === 'LOGIN' ? 'Sign in with Google' : 'Sign up with Google'}
+                    </span>
+                    <span className="text-[10px] text-emerald-800 bg-emerald-100/70 font-semibold px-2 py-0.5 rounded-full ml-auto border border-emerald-200/60">
+                      {selectedRole === 'COLLEGE' ? 'Canteen' : 'Student'}
+                    </span>
+                  </button>
+                )}
 
                 <div className="flex items-center justify-between text-[11px] px-1 text-slate-500">
                   <span className="flex items-center gap-1 text-slate-400">
