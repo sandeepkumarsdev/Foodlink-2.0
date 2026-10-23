@@ -36,7 +36,7 @@ export async function ensureDbInitialized(): Promise<void> {
 // URL Normalization and DB Initialization Middleware for Vercel Serverless & Local
 app.use(async (req: Request, res: Response, next) => {
   const original = (req.headers['x-forwarded-uri'] as string) || (req.headers['x-matched-path'] as string);
-  if (original && original !== '/api' && req.url === '/api') {
+  if (original && (req.url === '/api' || req.url === '/api/index')) {
     req.url = original;
   }
   if (!req.url.startsWith('/api')) {

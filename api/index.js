@@ -29150,7 +29150,7 @@ async function ensureDbInitialized() {
 }
 app.use(async (req, res, next) => {
   const original = req.headers["x-forwarded-uri"] || req.headers["x-matched-path"];
-  if (original && original !== "/api" && req.url === "/api") {
+  if (original && (req.url === "/api" || req.url === "/api/index")) {
     req.url = original;
   }
   if (!req.url.startsWith("/api")) {
@@ -29955,27 +29955,9 @@ if (!process.env.VERCEL) {
 var app_default = app;
 
 // backend/api.ts
-async function handler(req, res) {
-  const original = req.headers["x-forwarded-uri"] || req.headers["x-matched-path"];
-  if (original && (req.url === "/api" || req.url === "/api/index")) {
-    req.url = original;
-  }
-  if (req.url && !req.url.startsWith("/api")) {
-    req.url = "/api" + (req.url.startsWith("/") ? req.url : "/" + req.url);
-  }
-  try {
-    await ensureDbInitialized();
-  } catch (err) {
-    console.error("Database connection error in Vercel serverless function:", err);
-    return res.status(500).json({
-      error: "Database connection failed. Please ensure POSTGRES_URL environment variable is set in your Vercel Project Settings.",
-      details: err.message
-    });
-  }
-  return app_default(req, res);
-}
+var api_default = app_default;
 export {
-  handler as default
+  api_default as default
 };
 /*! Bundled license information:
 
