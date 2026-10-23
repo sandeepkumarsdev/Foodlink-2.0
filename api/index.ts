@@ -1,9 +1,9 @@
 import app, { ensureDbInitialized } from '../backend/app';
 
 export default async function handler(req: any, res: any) {
-  // If Vercel rewrote /api/... to /api, restore the original URL from headers
+  // If Vercel rewrote /api/... to /api/index, restore the original URL from headers
   const original = req.headers['x-forwarded-uri'] || req.headers['x-matched-path'];
-  if (original && original !== '/api' && req.url === '/api') {
+  if (original && (req.url === '/api' || req.url === '/api/index')) {
     req.url = original;
   }
   if (req.url && !req.url.startsWith('/api')) {
