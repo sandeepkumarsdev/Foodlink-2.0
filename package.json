@@ -1,6 +1,7 @@
 {
   "name": "foodlink",
   "private": true,
+  "type": "module",
   "workspaces": [
     "frontend",
     "backend"
@@ -9,7 +10,7 @@
     "dev": "concurrently -n \"backend,frontend\" -c \"blue,green\" \"npm run dev:backend\" \"npm run dev:frontend\"",
     "dev:frontend": "npm run dev --workspace=foodlink-frontend",
     "dev:backend": "npm run dev --workspace=foodlink-backend",
-    "build": "npm run build --workspace=foodlink-frontend",
+    "build": "npm run build --workspace=foodlink-frontend && node scripts/copy-dist.js",
     "install:all": "npm install"
   },
   "devDependencies": {
