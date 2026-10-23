@@ -28602,14 +28602,15 @@ dotenv.config({ path: path.resolve(process.cwd(), "backend/.env") });
 dotenv.config();
 var dbClient;
 var isVercelPostgres = false;
-if (process.env.POSTGRES_URL) {
+var connectionString = process.env.POSTGRES_URL || "postgresql://neondb_owner:npg_7oaDdi8tNLwB@ep-autumn-surf-b8uj6j1j-pooler.c-14.us-east-1.aws.neon.tech/neondb?sslmode=require";
+if (connectionString) {
   isVercelPostgres = true;
   const pool = new esm_default.Pool({
-    connectionString: process.env.POSTGRES_URL,
+    connectionString,
     ssl: { rejectUnauthorized: false },
     max: 1,
-    connectionTimeoutMillis: 1e4,
-    query_timeout: 1e4
+    connectionTimeoutMillis: 15e3,
+    query_timeout: 15e3
   });
   pool.on("error", (err) => {
     console.error("Unexpected error on idle Postgres client", err);

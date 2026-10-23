@@ -16,16 +16,18 @@ export interface DbClient {
 let dbClient: DbClient;
 export let isVercelPostgres = false;
 
-if (process.env.POSTGRES_URL) {
+const connectionString = process.env.POSTGRES_URL || "postgresql://neondb_owner:npg_7oaDdi8tNLwB@ep-autumn-surf-b8uj6j1j-pooler.c-14.us-east-1.aws.neon.tech/neondb?sslmode=require";
+
+if (connectionString) {
   isVercelPostgres = true;
   // Use a Pool with max: 1 to ensure transaction state (BEGIN/COMMIT) works as expected 
   // since server.ts uses pg.exec('BEGIN') and query() sequentially, while allowing auto-reconnects.
   const pool = new pgDriver.Pool({
-    connectionString: process.env.POSTGRES_URL,
+    connectionString,
     ssl: { rejectUnauthorized: false },
     max: 1,
-    connectionTimeoutMillis: 10000,
-    query_timeout: 10000
+    connectionTimeoutMillis: 15000,
+    query_timeout: 15000
   });
   
   pool.on('error', (err) => {
