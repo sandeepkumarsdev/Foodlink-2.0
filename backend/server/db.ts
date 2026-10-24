@@ -207,6 +207,10 @@ export async function initPostgres() {
 
     -- Ensure password_hash column exists on existing deployed databases
     ALTER TABLE users ADD COLUMN IF NOT EXISTS password_hash TEXT;
+
+    -- Attach default password (Password123!) to demo accounts if not set
+    UPDATE users SET password_hash = 'd658306858b7c961c0b0c5260cf6c255:4b36d650b0a30499ab4e8d8e29d82a51cefecce1476243f0b5f38e4f0cbd47cdbcf83ecac5897d95149ba506a597e95483f4c07ce7c168eab536583746ed4b16'
+    WHERE password_hash IS NULL AND email IN ('alex.student@campus.edu', 'sarah.c@campus.edu', 'chef.marco@campus.edu', 'priya.catering@campus.edu', 'admin@foodlink.edu');
   `);
 
   // Check if users table is populated; if not, seed initial data
@@ -238,21 +242,23 @@ export async function seedPostgresData() {
     TRUNCATE TABLE users CASCADE;
   `);
 
+  const demoPassHash = 'd658306858b7c961c0b0c5260cf6c255:4b36d650b0a30499ab4e8d8e29d82a51cefecce1476243f0b5f38e4f0cbd47cdbcf83ecac5897d95149ba506a597e95483f4c07ce7c168eab536583746ed4b16';
+
   // Seed Users
   await pg.query(`
-    INSERT INTO users (id, name, email, phone, user_type, college, canteen_name, is_verified, avatar_url, created_at)
+    INSERT INTO users (id, name, email, password_hash, phone, user_type, college, canteen_name, is_verified, avatar_url, created_at)
     VALUES 
-    ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10),
-    ($11, $12, $13, $14, $15, $16, $17, $18, $19, $20),
-    ($21, $22, $23, $24, $25, $26, $27, $28, $29, $30),
-    ($31, $32, $33, $34, $35, $36, $37, $38, $39, $40),
-    ($41, $42, $43, $44, $45, $46, $47, $48, $49, $50)
+    ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11),
+    ($12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22),
+    ($23, $24, $25, $26, $27, $28, $29, $30, $31, $32, $33),
+    ($34, $35, $36, $37, $38, $39, $40, $41, $42, $43, $44),
+    ($45, $46, $47, $48, $49, $50, $51, $52, $53, $54, $55)
   `, [
-    'usr_student_alex', 'Alex Rivera', 'alex.student@campus.edu', '+1 (555) 234-5678', 'USER', 'Stanford Central Campus', null, false, 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&w=200&q=80', new Date(now.getTime() - 86400000 * 10).toISOString(),
-    'usr_student_sarah', 'Sarah Chen', 'sarah.c@campus.edu', '+1 (555) 345-6789', 'USER', 'Stanford Central Campus', null, false, 'https://images.unsplash.com/photo-1517841905240-472988babdf9?auto=format&fit=crop&w=200&q=80', new Date(now.getTime() - 86400000 * 8).toISOString(),
-    'usr_canteen_chef_marco', 'Chef Marco Rossi', 'chef.marco@campus.edu', '+1 (555) 789-0123', 'COLLEGE', 'Stanford Central Campus', 'Tresidder Student Dining Hall', true, 'https://images.unsplash.com/photo-1577219491135-ce391730fb2c?auto=format&fit=crop&w=200&q=80', new Date(now.getTime() - 86400000 * 30).toISOString(),
-    'usr_canteen_priya', 'Priya Sharma (Catering Dir.)', 'priya.catering@campus.edu', '+1 (555) 890-1234', 'COLLEGE', 'UC Berkeley Campus', 'Crossroads Dining Commons', true, 'https://images.unsplash.com/photo-1580489944761-15a19d654956?auto=format&fit=crop&w=200&q=80', new Date(now.getTime() - 86400000 * 20).toISOString(),
-    'usr_admin', 'Foodlink Campus Admin', 'admin@foodlink.edu', '+1 (555) 999-0000', 'ADMIN', 'System-wide Admin', null, true, 'https://images.unsplash.com/photo-1472099645785-5658abf4ff4e?auto=format&fit=crop&w=200&q=80', new Date(now.getTime() - 86400000 * 60).toISOString(),
+    'usr_student_alex', 'Alex Rivera', 'alex.student@campus.edu', demoPassHash, '+1 (555) 234-5678', 'USER', 'Stanford Central Campus', null, false, 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&w=200&q=80', new Date(now.getTime() - 86400000 * 10).toISOString(),
+    'usr_student_sarah', 'Sarah Chen', 'sarah.c@campus.edu', demoPassHash, '+1 (555) 345-6789', 'USER', 'Stanford Central Campus', null, false, 'https://images.unsplash.com/photo-1517841905240-472988babdf9?auto=format&fit=crop&w=200&q=80', new Date(now.getTime() - 86400000 * 8).toISOString(),
+    'usr_canteen_chef_marco', 'Chef Marco Rossi', 'chef.marco@campus.edu', demoPassHash, '+1 (555) 789-0123', 'COLLEGE', 'Stanford Central Campus', 'Tresidder Student Dining Hall', true, 'https://images.unsplash.com/photo-1577219491135-ce391730fb2c?auto=format&fit=crop&w=200&q=80', new Date(now.getTime() - 86400000 * 30).toISOString(),
+    'usr_canteen_priya', 'Priya Sharma (Catering Dir.)', 'priya.catering@campus.edu', demoPassHash, '+1 (555) 890-1234', 'COLLEGE', 'UC Berkeley Campus', 'Crossroads Dining Commons', true, 'https://images.unsplash.com/photo-1580489944761-15a19d654956?auto=format&fit=crop&w=200&q=80', new Date(now.getTime() - 86400000 * 20).toISOString(),
+    'usr_admin', 'Foodlink Campus Admin', 'admin@foodlink.edu', demoPassHash, '+1 (555) 999-0000', 'ADMIN', 'System-wide Admin', null, true, 'https://images.unsplash.com/photo-1472099645785-5658abf4ff4e?auto=format&fit=crop&w=200&q=80', new Date(now.getTime() - 86400000 * 60).toISOString(),
   ]);
 
   // Seed Food Posts

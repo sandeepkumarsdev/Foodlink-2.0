@@ -28782,6 +28782,10 @@ async function initPostgres() {
 
     -- Ensure password_hash column exists on existing deployed databases
     ALTER TABLE users ADD COLUMN IF NOT EXISTS password_hash TEXT;
+
+    -- Attach default password (Password123!) to demo accounts if not set
+    UPDATE users SET password_hash = 'd658306858b7c961c0b0c5260cf6c255:4b36d650b0a30499ab4e8d8e29d82a51cefecce1476243f0b5f38e4f0cbd47cdbcf83ecac5897d95149ba506a597e95483f4c07ce7c168eab536583746ed4b16'
+    WHERE password_hash IS NULL AND email IN ('alex.student@campus.edu', 'sarah.c@campus.edu', 'chef.marco@campus.edu', 'priya.catering@campus.edu', 'admin@foodlink.edu');
   `);
   const userCountRes = await pg2.query("SELECT COUNT(*) as count FROM users");
   const count = parseInt(userCountRes.rows[0]?.count || "0", 10);
@@ -28806,18 +28810,20 @@ async function seedPostgresData() {
     TRUNCATE TABLE food_posts CASCADE;
     TRUNCATE TABLE users CASCADE;
   `);
+  const demoPassHash = "d658306858b7c961c0b0c5260cf6c255:4b36d650b0a30499ab4e8d8e29d82a51cefecce1476243f0b5f38e4f0cbd47cdbcf83ecac5897d95149ba506a597e95483f4c07ce7c168eab536583746ed4b16";
   await pg2.query(`
-    INSERT INTO users (id, name, email, phone, user_type, college, canteen_name, is_verified, avatar_url, created_at)
+    INSERT INTO users (id, name, email, password_hash, phone, user_type, college, canteen_name, is_verified, avatar_url, created_at)
     VALUES 
-    ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10),
-    ($11, $12, $13, $14, $15, $16, $17, $18, $19, $20),
-    ($21, $22, $23, $24, $25, $26, $27, $28, $29, $30),
-    ($31, $32, $33, $34, $35, $36, $37, $38, $39, $40),
-    ($41, $42, $43, $44, $45, $46, $47, $48, $49, $50)
+    ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11),
+    ($12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22),
+    ($23, $24, $25, $26, $27, $28, $29, $30, $31, $32, $33),
+    ($34, $35, $36, $37, $38, $39, $40, $41, $42, $43, $44),
+    ($45, $46, $47, $48, $49, $50, $51, $52, $53, $54, $55)
   `, [
     "usr_student_alex",
     "Alex Rivera",
     "alex.student@campus.edu",
+    demoPassHash,
     "+1 (555) 234-5678",
     "USER",
     "Stanford Central Campus",
@@ -28828,6 +28834,7 @@ async function seedPostgresData() {
     "usr_student_sarah",
     "Sarah Chen",
     "sarah.c@campus.edu",
+    demoPassHash,
     "+1 (555) 345-6789",
     "USER",
     "Stanford Central Campus",
@@ -28838,6 +28845,7 @@ async function seedPostgresData() {
     "usr_canteen_chef_marco",
     "Chef Marco Rossi",
     "chef.marco@campus.edu",
+    demoPassHash,
     "+1 (555) 789-0123",
     "COLLEGE",
     "Stanford Central Campus",
@@ -28848,6 +28856,7 @@ async function seedPostgresData() {
     "usr_canteen_priya",
     "Priya Sharma (Catering Dir.)",
     "priya.catering@campus.edu",
+    demoPassHash,
     "+1 (555) 890-1234",
     "COLLEGE",
     "UC Berkeley Campus",
@@ -28858,6 +28867,7 @@ async function seedPostgresData() {
     "usr_admin",
     "Foodlink Campus Admin",
     "admin@foodlink.edu",
+    demoPassHash,
     "+1 (555) 999-0000",
     "ADMIN",
     "System-wide Admin",
@@ -29295,24 +29305,29 @@ function verifyPassword(password, storedHash) {
 }
 app.post("/api/auth/login", async (req, res) => {
   const { email, password, role } = req.body;
-  if (!email) {
-    return res.status(400).json({ error: "Email is required" });
+  if (!email || !email.trim()) {
+    return res.status(400).json({ error: "Email address is required" });
+  }
+  if (!password || !password.trim()) {
+    return res.status(400).json({ error: "Password is required to sign in" });
   }
   try {
-    const existing = await query(`SELECT * FROM users WHERE LOWER(email) = LOWER($1) LIMIT 1`, [email]);
+    const existing = await query(`SELECT * FROM users WHERE LOWER(email) = LOWER($1) LIMIT 1`, [email.trim()]);
     if (existing.rows.length === 0) {
-      return res.status(404).json({ error: "User not found. Please sign up first." });
+      return res.status(404).json({ error: "Invalid credentials. No account found with this email." });
     }
     const row = existing.rows[0];
-    if (row.password_hash) {
-      if (!password) {
-        return res.status(401).json({
-          error: "Please enter your password to sign in.",
-          requiresPassword: true
-        });
+    if (!row.password_hash) {
+      if (password.length < 6) {
+        return res.status(400).json({ error: "Initial password must be at least 6 characters long" });
       }
-      if (!verifyPassword(password, row.password_hash)) {
-        return res.status(401).json({ error: "Incorrect password. Please try again." });
+      const newHash = hashPassword(password);
+      await query(`UPDATE users SET password_hash = $1 WHERE id = $2`, [newHash, row.id]);
+      row.password_hash = newHash;
+    } else {
+      const isValid = verifyPassword(password, row.password_hash);
+      if (!isValid) {
+        return res.status(401).json({ error: "Incorrect password. Please enter the unique password attached to this account." });
       }
     }
     const user = mapRowToUser(row);
@@ -29324,27 +29339,27 @@ app.post("/api/auth/login", async (req, res) => {
 });
 app.post("/api/auth/register", async (req, res) => {
   const { name, email, password, phone, userType, college, canteenName } = req.body;
-  if (!name || !email || !userType || !college) {
+  if (!name || !name.trim() || !email || !email.trim() || !userType || !college) {
     return res.status(400).json({ error: "Please provide all required fields" });
   }
-  if (password && password.length < 6) {
-    return res.status(400).json({ error: "Password must be at least 6 characters long" });
+  if (!password || password.trim().length < 6) {
+    return res.status(400).json({ error: "A secure password of at least 6 characters is required for this account" });
   }
   try {
-    const existing = await query(`SELECT id FROM users WHERE LOWER(email) = LOWER($1) LIMIT 1`, [email]);
+    const existing = await query(`SELECT id FROM users WHERE LOWER(email) = LOWER($1) LIMIT 1`, [email.trim()]);
     if (existing.rows.length > 0) {
       return res.status(409).json({ error: "An account with this email already exists in PostgreSQL" });
     }
     const newId = "usr_" + crypto.randomUUID().slice(0, 8);
-    const passwordHash = password ? hashPassword(password) : null;
+    const passwordHash = hashPassword(password.trim());
     const insertRes = await query(
       `INSERT INTO users (id, name, email, password_hash, phone, user_type, college, canteen_name, is_verified, avatar_url, created_at)
        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, NOW())
        RETURNING *`,
       [
         newId,
-        name,
-        email,
+        name.trim(),
+        email.trim(),
         passwordHash,
         phone || "+1 (555) 000-0000",
         userType,

@@ -339,10 +339,14 @@ export const LandingPage: React.FC<LandingPageProps> = ({
     try {
       if (authMode === 'LOGIN') {
         if (!email.trim()) {
-          setError('Please enter your email');
+          setError('Please enter your email address');
           return;
         }
-        await onLogin(email, password.trim() ? password : undefined, selectedRole);
+        if (!password.trim()) {
+          setError('Please enter the password attached to your account');
+          return;
+        }
+        await onLogin(email.trim(), password, selectedRole);
       } else {
         if (!name.trim() || !email.trim()) {
           setError('Please fill in all required fields');
@@ -690,17 +694,13 @@ export const LandingPage: React.FC<LandingPageProps> = ({
 
                 {authMode === 'LOGIN' && (
                   <div>
-                    <div className="flex items-center justify-between mb-1">
-                      <label className="block text-xs font-bold text-slate-700">
-                        Account Password
-                      </label>
-                      <span className="text-[10px] text-slate-400">
-                        Optional for demo accounts
-                      </span>
-                    </div>
+                    <label className="block text-xs font-bold text-slate-700 mb-1">
+                      Account Password *
+                    </label>
                     <div className="relative">
                       <input
                         type={showPassword ? 'text' : 'password'}
+                        required
                         placeholder="Enter your account password"
                         value={password}
                         onChange={(e) => setPassword(e.target.value)}

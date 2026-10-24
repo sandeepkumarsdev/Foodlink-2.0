@@ -197,29 +197,36 @@ function verifyPassword(password: string, storedHash: string): boolean {
 
 app.post('/api/auth/login', async (req: Request, res: Response) => {
   const { email, password, role } = req.body;
-  if (!email) {
-    return res.status(400).json({ error: 'Email is required' });
+  if (!email || !email.trim()) {
+    return res.status(400).json({ error: 'Email address is required' });
+  }
+
+  if (!password || !password.trim()) {
+    return res.status(400).json({ error: 'Password is required to sign in' });
   }
 
   try {
-    const existing = await query(`SELECT * FROM users WHERE LOWER(email) = LOWER($1) LIMIT 1`, [email]);
+    const existing = await query(`SELECT * FROM users WHERE LOWER(email) = LOWER($1) LIMIT 1`, [email.trim()]);
 
     if (existing.rows.length === 0) {
-      return res.status(404).json({ error: 'User not found. Please sign up first.' });
+      return res.status(404).json({ error: 'Invalid credentials. No account found with this email.' });
     }
 
     const row = existing.rows[0];
 
-    // If account has a password set, verify it!
-    if (row.password_hash) {
-      if (!password) {
-        return res.status(401).json({ 
-          error: 'Please enter your password to sign in.',
-          requiresPassword: true 
-        });
+    // If account does not have a password attached yet (legacy user), attach this password on first login
+    if (!row.password_hash) {
+      if (password.length < 6) {
+        return res.status(400).json({ error: 'Initial password must be at least 6 characters long' });
       }
-      if (!verifyPassword(password, row.password_hash)) {
-        return res.status(401).json({ error: 'Incorrect password. Please try again.' });
+      const newHash = hashPassword(password);
+      await query(`UPDATE users SET password_hash = $1 WHERE id = $2`, [newHash, row.id]);
+      row.password_hash = newHash;
+    } else {
+      // Strictly verify that the entered password matches the account's unique password
+      const isValid = verifyPassword(password, row.password_hash);
+      if (!isValid) {
+        return res.status(401).json({ error: 'Incorrect password. Please enter the unique password attached to this account.' });
       }
     }
 
@@ -234,22 +241,22 @@ app.post('/api/auth/login', async (req: Request, res: Response) => {
 app.post('/api/auth/register', async (req: Request, res: Response) => {
   const { name, email, password, phone, userType, college, canteenName } = req.body;
 
-  if (!name || !email || !userType || !college) {
+  if (!name || !name.trim() || !email || !email.trim() || !userType || !college) {
     return res.status(400).json({ error: 'Please provide all required fields' });
   }
 
-  if (password && password.length < 6) {
-    return res.status(400).json({ error: 'Password must be at least 6 characters long' });
+  if (!password || password.trim().length < 6) {
+    return res.status(400).json({ error: 'A secure password of at least 6 characters is required for this account' });
   }
 
   try {
-    const existing = await query(`SELECT id FROM users WHERE LOWER(email) = LOWER($1) LIMIT 1`, [email]);
+    const existing = await query(`SELECT id FROM users WHERE LOWER(email) = LOWER($1) LIMIT 1`, [email.trim()]);
     if (existing.rows.length > 0) {
       return res.status(409).json({ error: 'An account with this email already exists in PostgreSQL' });
     }
 
     const newId = 'usr_' + crypto.randomUUID().slice(0, 8);
-    const passwordHash = password ? hashPassword(password) : null;
+    const passwordHash = hashPassword(password.trim());
 
     const insertRes = await query(
       `INSERT INTO users (id, name, email, password_hash, phone, user_type, college, canteen_name, is_verified, avatar_url, created_at)
@@ -257,8 +264,8 @@ app.post('/api/auth/register', async (req: Request, res: Response) => {
        RETURNING *`,
       [
         newId,
-        name,
-        email,
+        name.trim(),
+        email.trim(),
         passwordHash,
         phone || '+1 (555) 000-0000',
         userType,
