@@ -9,8 +9,10 @@ import {
   CheckCircle2, 
   Users, 
   Leaf, 
-  Clock, 
+  Clock,
   HeartHandshake,
+  Lock,
+  AlertCircle
 } from 'lucide-react';
 import { User, UserType } from '../types';
 import { CAMPUS_OPTIONS } from '../utils/helpers';
@@ -243,29 +245,6 @@ export const LandingPage: React.FC<LandingPageProps> = ({
       }
     }
   }, []);
-
-  const handleCopy = (text: string, label: string) => {
-    navigator.clipboard.writeText(text);
-    setCopiedText(label);
-    setTimeout(() => setCopiedText(null), 2000);
-  };
-
-  const handleQuickGoogleTest = async (testEmailAddr: string, testUserName: string) => {
-    setError(null);
-    try {
-      await onGoogleAuth({
-        email: testEmailAddr,
-        name: testUserName,
-        avatarUrl: `https://api.dicebear.com/7.x/avataaars/svg?seed=${encodeURIComponent(testUserName)}`,
-        userType: selectedRole,
-        college,
-        canteenName: selectedRole === 'COLLEGE' ? canteenName : undefined,
-      });
-      setShowGoogleModal(false);
-    } catch (err: any) {
-      setError(err.message || 'Quick Google authentication failed');
-    }
-  };
 
   const handleGoogleButtonClick = () => {
     setError(null);
