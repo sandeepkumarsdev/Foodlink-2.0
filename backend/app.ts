@@ -176,22 +176,55 @@ app.get('/api/events', (req: Request, res: Response) => {
   });
 });
 
+// Password hashing helpers
+function hashPassword(password: string): string {
+  const salt = crypto.randomBytes(16).toString('hex');
+  const hash = crypto.scryptSync(password, salt, 64).toString('hex');
+  return `${salt}:${hash}`;
+}
+
+function verifyPassword(password: string, storedHash: string): boolean {
+  try {
+    const [salt, key] = storedHash.split(':');
+    if (!salt || !key) return false;
+    const keyBuffer = Buffer.from(key, 'hex');
+    const derivedKey = crypto.scryptSync(password, salt, 64);
+    return crypto.timingSafeEqual(keyBuffer, derivedKey);
+  } catch {
+    return false;
+  }
+}
+
 app.post('/api/auth/login', async (req: Request, res: Response) => {
-  const { email, role } = req.body;
+  const { email, password, role } = req.body;
   if (!email) {
     return res.status(400).json({ error: 'Email is required' });
   }
 
   try {
     const existing = await query(`SELECT * FROM users WHERE LOWER(email) = LOWER($1) LIMIT 1`, [email]);
-    let user: User;
 
-    if (existing.rows.length > 0) {
-      user = mapRowToUser(existing.rows[0]);
-      res.json({ user, token: 'mock-jwt-token-' + user.id });
-    } else {
+    if (existing.rows.length === 0) {
       return res.status(404).json({ error: 'User not found. Please sign up first.' });
     }
+
+    const row = existing.rows[0];
+
+    // If account has a password set, verify it!
+    if (row.password_hash) {
+      if (!password) {
+        return res.status(401).json({ 
+          error: 'Please enter your password to sign in.',
+          requiresPassword: true 
+        });
+      }
+      if (!verifyPassword(password, row.password_hash)) {
+        return res.status(401).json({ error: 'Incorrect password. Please try again.' });
+      }
+    }
+
+    const user = mapRowToUser(row);
+    res.json({ user, token: 'mock-jwt-token-' + user.id });
   } catch (err: any) {
     console.error('Login error:', err);
     res.status(500).json({ error: 'Database error during login' });
@@ -199,10 +232,14 @@ app.post('/api/auth/login', async (req: Request, res: Response) => {
 });
 
 app.post('/api/auth/register', async (req: Request, res: Response) => {
-  const { name, email, phone, userType, college, canteenName } = req.body;
+  const { name, email, password, phone, userType, college, canteenName } = req.body;
 
   if (!name || !email || !userType || !college) {
     return res.status(400).json({ error: 'Please provide all required fields' });
+  }
+
+  if (password && password.length < 6) {
+    return res.status(400).json({ error: 'Password must be at least 6 characters long' });
   }
 
   try {
@@ -212,14 +249,17 @@ app.post('/api/auth/register', async (req: Request, res: Response) => {
     }
 
     const newId = 'usr_' + crypto.randomUUID().slice(0, 8);
+    const passwordHash = password ? hashPassword(password) : null;
+
     const insertRes = await query(
-      `INSERT INTO users (id, name, email, phone, user_type, college, canteen_name, is_verified, avatar_url, created_at)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, NOW())
+      `INSERT INTO users (id, name, email, password_hash, phone, user_type, college, canteen_name, is_verified, avatar_url, created_at)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, NOW())
        RETURNING *`,
       [
         newId,
         name,
         email,
+        passwordHash,
         phone || '+1 (555) 000-0000',
         userType,
         college,
@@ -234,6 +274,53 @@ app.post('/api/auth/register', async (req: Request, res: Response) => {
   } catch (err: any) {
     console.error('Register error:', err);
     res.status(500).json({ error: 'Database error during registration' });
+  }
+});
+
+app.post('/api/auth/set-password', async (req: Request, res: Response) => {
+  const { userId, currentPassword, newPassword } = req.body;
+
+  if (!userId || !newPassword) {
+    return res.status(400).json({ error: 'User ID and new password are required' });
+  }
+
+  if (newPassword.length < 6) {
+    return res.status(400).json({ error: 'New password must be at least 6 characters long' });
+  }
+
+  try {
+    const userRes = await query(`SELECT * FROM users WHERE id = $1 LIMIT 1`, [userId]);
+    if (userRes.rows.length === 0) {
+      return res.status(404).json({ error: 'User not found' });
+    }
+
+    const userRow = userRes.rows[0];
+
+    // If user already has a password, verify current password
+    if (userRow.password_hash) {
+      if (!currentPassword) {
+        return res.status(400).json({ error: 'Please enter your current password to change it' });
+      }
+      if (!verifyPassword(currentPassword, userRow.password_hash)) {
+        return res.status(401).json({ error: 'Current password is incorrect' });
+      }
+    }
+
+    const newHash = hashPassword(newPassword);
+    const updateRes = await query(
+      `UPDATE users SET password_hash = $1 WHERE id = $2 RETURNING *`,
+      [newHash, userId]
+    );
+
+    const updatedUser = mapRowToUser(updateRes.rows[0]);
+    res.json({ 
+      success: true, 
+      message: userRow.password_hash ? 'Password updated successfully' : 'Password set successfully',
+      user: updatedUser 
+    });
+  } catch (err: any) {
+    console.error('Set password error:', err);
+    res.status(500).json({ error: 'Failed to update password in database' });
   }
 });
 

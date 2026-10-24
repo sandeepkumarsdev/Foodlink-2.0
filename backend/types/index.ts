@@ -12,6 +12,7 @@ export interface User {
   canteenName?: string;
   isVerified?: boolean;
   avatarUrl?: string;
+  hasPassword?: boolean;
   createdAt: string;
 }
 

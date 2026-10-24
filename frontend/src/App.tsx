@@ -30,6 +30,7 @@ import { ArchitectureModal } from './components/ArchitectureModal';
 import { LandingPage } from './components/LandingPage';
 import { StatsView } from './components/StatsView';
 import { MobileBottomNav } from './components/MobileBottomNav';
+import { SetPasswordModal } from './components/SetPasswordModal';
 
 export default function App() {
   // Authentication & Users
@@ -56,6 +57,7 @@ export default function App() {
   const [showNotificationsDropdown, setShowNotificationsDropdown] = useState(false);
   const [showRaceTesterModal, setShowRaceTesterModal] = useState(false);
   const [showDocsModal, setShowDocsModal] = useState(false);
+  const [showSetPasswordModal, setShowSetPasswordModal] = useState(false);
 
   // Claim Operation State
   const [isClaiming, setIsClaiming] = useState(false);
@@ -313,6 +315,7 @@ export default function App() {
         onOpenRaceModal={() => setShowRaceTesterModal(true)}
         onOpenDocsModal={() => setShowDocsModal(true)}
         onOpenPostFood={() => setShowPostFoodModal(true)}
+        onOpenSetPassword={() => setShowSetPasswordModal(true)}
         isSseConnected={isSseConnected}
         onResetDemo={async () => {
           await api.resetDemo();
@@ -324,10 +327,10 @@ export default function App() {
       <main className="flex-1 pb-20 md:pb-0">
         {!currentUser ? (
           <LandingPage
-            onLogin={async (email, role) => {
+            onLogin={async (email, password, role) => {
               setIsAuthenticating(true);
               try {
-                const res = await api.login(email, role);
+                const res = await api.login(email, password, role);
                 setCurrentUser(res.user);
                 fetchData();
               } finally {
@@ -650,6 +653,19 @@ export default function App() {
       {/* System Architecture & Concurrency Specs Modal */}
       {showDocsModal && (
         <ArchitectureModal onClose={() => setShowDocsModal(false)} />
+      )}
+
+      {/* Set or Change Password Modal */}
+      {currentUser && showSetPasswordModal && (
+        <SetPasswordModal
+          currentUser={currentUser}
+          isOpen={showSetPasswordModal}
+          onClose={() => setShowSetPasswordModal(false)}
+          onSuccess={(updatedUser) => {
+            setCurrentUser(updatedUser);
+            fetchData();
+          }}
+        />
       )}
 
       {/* Mobile Bottom Navigation */}

@@ -117,11 +117,11 @@ export const api = {
     return res.json();
   },
 
-  async login(email: string, role?: string): Promise<{ user: User; token: string }> {
+  async login(email: string, password?: string, role?: string): Promise<{ user: User; token: string }> {
     const res = await fetch('/api/auth/login', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ email, role }),
+      body: JSON.stringify({ email, password, role }),
     });
     const data = await res.json();
     if (!res.ok) throw new Error(data.error || 'Failed to login');
@@ -136,6 +136,17 @@ export const api = {
     });
     const data = await res.json();
     if (!res.ok) throw new Error(data.error || 'Failed to register');
+    return data;
+  },
+
+  async setPassword(payload: { userId: string; currentPassword?: string; newPassword: string }): Promise<{ success: boolean; user: User; message: string }> {
+    const res = await fetch('/api/auth/set-password', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error || 'Failed to update password');
     return data;
   },
 

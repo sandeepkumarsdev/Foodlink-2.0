@@ -63,7 +63,7 @@ if (connectionString) {
       
       try {
         await pgliteInstance.exec(`
-          CREATE TABLE IF NOT EXISTS users (id TEXT PRIMARY KEY, name TEXT NOT NULL, email TEXT UNIQUE NOT NULL, phone TEXT, user_type TEXT NOT NULL CHECK (user_type IN ('USER', 'COLLEGE', 'ADMIN')), college TEXT NOT NULL, canteen_name TEXT, is_verified BOOLEAN DEFAULT FALSE, avatar_url TEXT, created_at TIMESTAMPTZ DEFAULT NOW());
+          CREATE TABLE IF NOT EXISTS users (id TEXT PRIMARY KEY, name TEXT NOT NULL, email TEXT UNIQUE NOT NULL, password_hash TEXT, phone TEXT, user_type TEXT NOT NULL CHECK (user_type IN ('USER', 'COLLEGE', 'ADMIN')), college TEXT NOT NULL, canteen_name TEXT, is_verified BOOLEAN DEFAULT FALSE, avatar_url TEXT, created_at TIMESTAMPTZ DEFAULT NOW());
           CREATE TABLE IF NOT EXISTS food_posts (id TEXT PRIMARY KEY, college_id TEXT NOT NULL, canteen_id TEXT NOT NULL, college_name TEXT NOT NULL, canteen_name TEXT NOT NULL, food_name TEXT NOT NULL, description TEXT NOT NULL, quantity TEXT NOT NULL, servings_count INTEGER DEFAULT 10, image_url TEXT NOT NULL, available_from TIMESTAMPTZ NOT NULL, collection_deadline TIMESTAMPTZ NOT NULL, location TEXT NOT NULL, status TEXT NOT NULL CHECK (status IN ('AVAILABLE', 'CLAIMED', 'COLLECTED', 'EXPIRED', 'CANCELLED')), claimed_by TEXT REFERENCES users(id), claimant_name TEXT, claimant_phone TEXT, claim_code TEXT, claimed_at TIMESTAMPTZ, collected_at TIMESTAMPTZ, cancelled_at TIMESTAMPTZ, cancellation_reason TEXT, food_safety_info TEXT NOT NULL, dietary_tags JSONB DEFAULT '[]'::jsonb, temperature TEXT CHECK (temperature IN ('HOT', 'COLD', 'ROOM_TEMP')), created_at TIMESTAMPTZ DEFAULT NOW());
           CREATE TABLE IF NOT EXISTS claims (id TEXT PRIMARY KEY, food_post_id TEXT NOT NULL REFERENCES food_posts(id) ON DELETE CASCADE, user_id TEXT NOT NULL REFERENCES users(id), user_name TEXT NOT NULL, user_phone TEXT, status TEXT NOT NULL CHECK (status IN ('CLAIMED', 'COLLECTED', 'CANCELLED')), claim_code TEXT NOT NULL, claimed_at TIMESTAMPTZ DEFAULT NOW(), collected_at TIMESTAMPTZ);
           CREATE TABLE IF NOT EXISTS notifications (id TEXT PRIMARY KEY, user_id TEXT NOT NULL REFERENCES users(id), food_post_id TEXT REFERENCES food_posts(id) ON DELETE SET NULL, title TEXT NOT NULL, message TEXT NOT NULL, type TEXT NOT NULL, read BOOLEAN DEFAULT FALSE, created_at TIMESTAMPTZ DEFAULT NOW());
@@ -138,6 +138,7 @@ export async function initPostgres() {
       id TEXT PRIMARY KEY,
       name TEXT NOT NULL,
       email TEXT UNIQUE NOT NULL,
+      password_hash TEXT,
       phone TEXT,
       user_type TEXT NOT NULL CHECK (user_type IN ('USER', 'COLLEGE', 'ADMIN')),
       college TEXT NOT NULL,
@@ -203,6 +204,9 @@ export async function initPostgres() {
     CREATE INDEX IF NOT EXISTS idx_food_posts_college ON food_posts(college_name);
     CREATE INDEX IF NOT EXISTS idx_claims_post ON claims(food_post_id);
     CREATE INDEX IF NOT EXISTS idx_notifs_user ON notifications(user_id);
+
+    -- Ensure password_hash column exists on existing deployed databases
+    ALTER TABLE users ADD COLUMN IF NOT EXISTS password_hash TEXT;
   `);
 
   // Check if users table is populated; if not, seed initial data
@@ -362,6 +366,7 @@ export function mapRowToUser(r: any): User {
     canteenName: r.canteen_name || undefined,
     isVerified: r.is_verified,
     avatarUrl: r.avatar_url,
+    hasPassword: Boolean(r.password_hash),
     createdAt: new Date(r.created_at).toISOString(),
   };
 }

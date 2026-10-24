@@ -28649,7 +28649,7 @@ if (connectionString) {
       pgliteInstance = new PGlite();
       try {
         await pgliteInstance.exec(`
-          CREATE TABLE IF NOT EXISTS users (id TEXT PRIMARY KEY, name TEXT NOT NULL, email TEXT UNIQUE NOT NULL, phone TEXT, user_type TEXT NOT NULL CHECK (user_type IN ('USER', 'COLLEGE', 'ADMIN')), college TEXT NOT NULL, canteen_name TEXT, is_verified BOOLEAN DEFAULT FALSE, avatar_url TEXT, created_at TIMESTAMPTZ DEFAULT NOW());
+          CREATE TABLE IF NOT EXISTS users (id TEXT PRIMARY KEY, name TEXT NOT NULL, email TEXT UNIQUE NOT NULL, password_hash TEXT, phone TEXT, user_type TEXT NOT NULL CHECK (user_type IN ('USER', 'COLLEGE', 'ADMIN')), college TEXT NOT NULL, canteen_name TEXT, is_verified BOOLEAN DEFAULT FALSE, avatar_url TEXT, created_at TIMESTAMPTZ DEFAULT NOW());
           CREATE TABLE IF NOT EXISTS food_posts (id TEXT PRIMARY KEY, college_id TEXT NOT NULL, canteen_id TEXT NOT NULL, college_name TEXT NOT NULL, canteen_name TEXT NOT NULL, food_name TEXT NOT NULL, description TEXT NOT NULL, quantity TEXT NOT NULL, servings_count INTEGER DEFAULT 10, image_url TEXT NOT NULL, available_from TIMESTAMPTZ NOT NULL, collection_deadline TIMESTAMPTZ NOT NULL, location TEXT NOT NULL, status TEXT NOT NULL CHECK (status IN ('AVAILABLE', 'CLAIMED', 'COLLECTED', 'EXPIRED', 'CANCELLED')), claimed_by TEXT REFERENCES users(id), claimant_name TEXT, claimant_phone TEXT, claim_code TEXT, claimed_at TIMESTAMPTZ, collected_at TIMESTAMPTZ, cancelled_at TIMESTAMPTZ, cancellation_reason TEXT, food_safety_info TEXT NOT NULL, dietary_tags JSONB DEFAULT '[]'::jsonb, temperature TEXT CHECK (temperature IN ('HOT', 'COLD', 'ROOM_TEMP')), created_at TIMESTAMPTZ DEFAULT NOW());
           CREATE TABLE IF NOT EXISTS claims (id TEXT PRIMARY KEY, food_post_id TEXT NOT NULL REFERENCES food_posts(id) ON DELETE CASCADE, user_id TEXT NOT NULL REFERENCES users(id), user_name TEXT NOT NULL, user_phone TEXT, status TEXT NOT NULL CHECK (status IN ('CLAIMED', 'COLLECTED', 'CANCELLED')), claim_code TEXT NOT NULL, claimed_at TIMESTAMPTZ DEFAULT NOW(), collected_at TIMESTAMPTZ);
           CREATE TABLE IF NOT EXISTS notifications (id TEXT PRIMARY KEY, user_id TEXT NOT NULL REFERENCES users(id), food_post_id TEXT REFERENCES food_posts(id) ON DELETE SET NULL, title TEXT NOT NULL, message TEXT NOT NULL, type TEXT NOT NULL, read BOOLEAN DEFAULT FALSE, created_at TIMESTAMPTZ DEFAULT NOW());
@@ -28713,6 +28713,7 @@ async function initPostgres() {
       id TEXT PRIMARY KEY,
       name TEXT NOT NULL,
       email TEXT UNIQUE NOT NULL,
+      password_hash TEXT,
       phone TEXT,
       user_type TEXT NOT NULL CHECK (user_type IN ('USER', 'COLLEGE', 'ADMIN')),
       college TEXT NOT NULL,
@@ -28778,6 +28779,9 @@ async function initPostgres() {
     CREATE INDEX IF NOT EXISTS idx_food_posts_college ON food_posts(college_name);
     CREATE INDEX IF NOT EXISTS idx_claims_post ON claims(food_post_id);
     CREATE INDEX IF NOT EXISTS idx_notifs_user ON notifications(user_id);
+
+    -- Ensure password_hash column exists on existing deployed databases
+    ALTER TABLE users ADD COLUMN IF NOT EXISTS password_hash TEXT;
   `);
   const userCountRes = await pg2.query("SELECT COUNT(*) as count FROM users");
   const count = parseInt(userCountRes.rows[0]?.count || "0", 10);
@@ -29070,6 +29074,7 @@ function mapRowToUser(r) {
     canteenName: r.canteen_name || void 0,
     isVerified: r.is_verified,
     avatarUrl: r.avatar_url,
+    hasPassword: Boolean(r.password_hash),
     createdAt: new Date(r.created_at).toISOString()
   };
 }
@@ -29272,29 +29277,58 @@ app.get("/api/events", (req, res) => {
     sseClients.delete(res);
   });
 });
+function hashPassword(password) {
+  const salt = crypto.randomBytes(16).toString("hex");
+  const hash = crypto.scryptSync(password, salt, 64).toString("hex");
+  return `${salt}:${hash}`;
+}
+function verifyPassword(password, storedHash) {
+  try {
+    const [salt, key] = storedHash.split(":");
+    if (!salt || !key) return false;
+    const keyBuffer = Buffer.from(key, "hex");
+    const derivedKey = crypto.scryptSync(password, salt, 64);
+    return crypto.timingSafeEqual(keyBuffer, derivedKey);
+  } catch {
+    return false;
+  }
+}
 app.post("/api/auth/login", async (req, res) => {
-  const { email, role } = req.body;
+  const { email, password, role } = req.body;
   if (!email) {
     return res.status(400).json({ error: "Email is required" });
   }
   try {
     const existing = await query(`SELECT * FROM users WHERE LOWER(email) = LOWER($1) LIMIT 1`, [email]);
-    let user;
-    if (existing.rows.length > 0) {
-      user = mapRowToUser(existing.rows[0]);
-      res.json({ user, token: "mock-jwt-token-" + user.id });
-    } else {
+    if (existing.rows.length === 0) {
       return res.status(404).json({ error: "User not found. Please sign up first." });
     }
+    const row = existing.rows[0];
+    if (row.password_hash) {
+      if (!password) {
+        return res.status(401).json({
+          error: "Please enter your password to sign in.",
+          requiresPassword: true
+        });
+      }
+      if (!verifyPassword(password, row.password_hash)) {
+        return res.status(401).json({ error: "Incorrect password. Please try again." });
+      }
+    }
+    const user = mapRowToUser(row);
+    res.json({ user, token: "mock-jwt-token-" + user.id });
   } catch (err) {
     console.error("Login error:", err);
     res.status(500).json({ error: "Database error during login" });
   }
 });
 app.post("/api/auth/register", async (req, res) => {
-  const { name, email, phone, userType, college, canteenName } = req.body;
+  const { name, email, password, phone, userType, college, canteenName } = req.body;
   if (!name || !email || !userType || !college) {
     return res.status(400).json({ error: "Please provide all required fields" });
+  }
+  if (password && password.length < 6) {
+    return res.status(400).json({ error: "Password must be at least 6 characters long" });
   }
   try {
     const existing = await query(`SELECT id FROM users WHERE LOWER(email) = LOWER($1) LIMIT 1`, [email]);
@@ -29302,14 +29336,16 @@ app.post("/api/auth/register", async (req, res) => {
       return res.status(409).json({ error: "An account with this email already exists in PostgreSQL" });
     }
     const newId = "usr_" + crypto.randomUUID().slice(0, 8);
+    const passwordHash = password ? hashPassword(password) : null;
     const insertRes = await query(
-      `INSERT INTO users (id, name, email, phone, user_type, college, canteen_name, is_verified, avatar_url, created_at)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, NOW())
+      `INSERT INTO users (id, name, email, password_hash, phone, user_type, college, canteen_name, is_verified, avatar_url, created_at)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, NOW())
        RETURNING *`,
       [
         newId,
         name,
         email,
+        passwordHash,
         phone || "+1 (555) 000-0000",
         userType,
         college,
@@ -29323,6 +29359,44 @@ app.post("/api/auth/register", async (req, res) => {
   } catch (err) {
     console.error("Register error:", err);
     res.status(500).json({ error: "Database error during registration" });
+  }
+});
+app.post("/api/auth/set-password", async (req, res) => {
+  const { userId, currentPassword, newPassword } = req.body;
+  if (!userId || !newPassword) {
+    return res.status(400).json({ error: "User ID and new password are required" });
+  }
+  if (newPassword.length < 6) {
+    return res.status(400).json({ error: "New password must be at least 6 characters long" });
+  }
+  try {
+    const userRes = await query(`SELECT * FROM users WHERE id = $1 LIMIT 1`, [userId]);
+    if (userRes.rows.length === 0) {
+      return res.status(404).json({ error: "User not found" });
+    }
+    const userRow = userRes.rows[0];
+    if (userRow.password_hash) {
+      if (!currentPassword) {
+        return res.status(400).json({ error: "Please enter your current password to change it" });
+      }
+      if (!verifyPassword(currentPassword, userRow.password_hash)) {
+        return res.status(401).json({ error: "Current password is incorrect" });
+      }
+    }
+    const newHash = hashPassword(newPassword);
+    const updateRes = await query(
+      `UPDATE users SET password_hash = $1 WHERE id = $2 RETURNING *`,
+      [newHash, userId]
+    );
+    const updatedUser = mapRowToUser(updateRes.rows[0]);
+    res.json({
+      success: true,
+      message: userRow.password_hash ? "Password updated successfully" : "Password set successfully",
+      user: updatedUser
+    });
+  } catch (err) {
+    console.error("Set password error:", err);
+    res.status(500).json({ error: "Failed to update password in database" });
   }
 });
 app.post("/api/auth/google", async (req, res) => {

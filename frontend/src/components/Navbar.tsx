@@ -10,7 +10,8 @@ import {
   Cpu, 
   CheckCircle2, 
   ChevronDown,
-  RefreshCw
+  RefreshCw,
+  KeyRound
 } from 'lucide-react';
 import { User } from '../types';
 import { CAMPUS_OPTIONS } from '../utils/helpers';
@@ -29,6 +30,7 @@ interface NavbarProps {
   onOpenRaceModal?: () => void;
   onOpenDocsModal?: () => void;
   onOpenPostFood: () => void;
+  onOpenSetPassword?: () => void;
   isSseConnected: boolean;
   onResetDemo: () => void;
 }
@@ -47,6 +49,7 @@ export const Navbar: React.FC<NavbarProps> = ({
   onOpenRaceModal,
   onOpenDocsModal,
   onOpenPostFood,
+  onOpenSetPassword,
   isSseConnected,
   onResetDemo,
 }) => {
@@ -242,6 +245,26 @@ export const Navbar: React.FC<NavbarProps> = ({
                       </div>
 
 
+
+                      <div className="py-1 px-2">
+                        <button
+                          type="button"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setShowUserMenu(false);
+                            onOpenSetPassword?.();
+                          }}
+                          className="w-full flex items-center justify-between px-3 py-2 text-xs text-slate-700 hover:bg-slate-50 hover:text-emerald-700 rounded-lg font-medium transition-colors cursor-pointer"
+                        >
+                          <div className="flex items-center gap-2">
+                            <KeyRound className="w-3.5 h-3.5 text-emerald-600" />
+                            <span>{currentUser.hasPassword ? 'Change Password' : 'Set Account Password'}</span>
+                          </div>
+                          <span className={`text-[9px] font-bold px-1.5 py-0.5 rounded-full ${currentUser.hasPassword ? 'bg-slate-100 text-slate-600' : 'bg-emerald-100 text-emerald-800'}`}>
+                            {currentUser.hasPassword ? 'Configured' : 'Set Password'}
+                          </span>
+                        </button>
+                      </div>
 
                       <div className="border-t border-slate-100 mt-1 pt-1 px-2">
                         <button
