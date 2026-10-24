@@ -1,4 +1,10 @@
 import nodemailer from 'nodemailer';
+import dns from 'dns';
+
+// Ensure IPv4 is prioritized for SMTP connections to prevent ENETUNREACH on dual-stack environments
+if (typeof dns.setDefaultResultOrder === 'function') {
+  dns.setDefaultResultOrder('ipv4first');
+}
 
 export function isEmailConfigured(): boolean {
   const user = process.env.EMAIL_USER || process.env.SMTP_USER;
@@ -24,9 +30,7 @@ export async function sendVerificationEmail(email: string, code: string): Promis
     port: process.env.SMTP_PORT ? parseInt(process.env.SMTP_PORT, 10) : undefined,
     secure: process.env.SMTP_SECURE === 'true',
     auth: { user, pass },
-    family: 4,
-    connectionTimeout: 10000,
-  } as any);
+  });
 
   const mailHtml = `
     <!DOCTYPE html>

@@ -2,6 +2,11 @@ import express, { Request, Response } from 'express';
 import path from 'path';
 import crypto from 'crypto';
 import cors from 'cors';
+import dotenv from 'dotenv';
+
+// Load backend/.env in development if not already loaded
+dotenv.config({ path: path.resolve(process.cwd(), 'backend/.env') });
+dotenv.config();
 import { 
   pg, 
   query,
