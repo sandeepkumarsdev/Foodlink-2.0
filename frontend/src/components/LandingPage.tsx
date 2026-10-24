@@ -176,6 +176,87 @@ export const LandingPage: React.FC<LandingPageProps> = ({
     };
   }, [isGoogleConfigured, googleClientId]);
 
+  const redirectToGoogleOAuth = () => {
+    try {
+      const currentOrigin = window.location.origin;
+      const authUrl = new URL('https://accounts.google.com/o/oauth2/v2/auth');
+      authUrl.searchParams.set('client_id', googleClientId);
+      authUrl.searchParams.set('redirect_uri', currentOrigin);
+      authUrl.searchParams.set('response_type', 'token');
+      authUrl.searchParams.set('scope', 'openid email profile');
+      authUrl.searchParams.set('prompt', 'select_account');
+
+      const stateObj = {
+        role: selectedRoleRef.current,
+        college: collegeRef.current,
+        canteenName: canteenNameRef.current,
+      };
+      authUrl.searchParams.set('state', encodeURIComponent(JSON.stringify(stateObj)));
+
+      window.location.href = authUrl.toString();
+    } catch (e: any) {
+      console.error('Redirect failed:', e);
+      setError('Failed to redirect to Google: ' + e.message);
+    }
+  };
+
+  // Check URL fragment for OAuth redirect return token
+  useEffect(() => {
+    const hash = window.location.hash;
+    if (hash && hash.includes('access_token=')) {
+      const cleanHash = hash.startsWith('#') ? hash.slice(1) : hash;
+      const params = new URLSearchParams(cleanHash);
+      const accessToken = params.get('access_token');
+      const stateParam = params.get('state');
+
+      let savedRole = selectedRoleRef.current;
+      let savedCollege = collegeRef.current;
+      let savedCanteen = canteenNameRef.current;
+
+      if (stateParam) {
+        try {
+          const parsed = JSON.parse(decodeURIComponent(stateParam));
+          if (parsed.role) savedRole = parsed.role;
+          if (parsed.college) savedCollege = parsed.college;
+          if (parsed.canteenName) savedCanteen = parsed.canteenName;
+        } catch (err) {
+          console.warn('Could not parse OAuth state:', err);
+        }
+      }
+
+      if (accessToken) {
+        window.history.replaceState(null, '', window.location.pathname);
+        setIsGoogleAuthenticating(true);
+
+        fetch('https://www.googleapis.com/oauth2/v3/userinfo', {
+          headers: { Authorization: `Bearer ${accessToken}` },
+        })
+          .then((res) => {
+            if (!res.ok) throw new Error('Could not fetch user profile from Google');
+            return res.json();
+          })
+          .then(async (profile) => {
+            if (!profile.email) throw new Error('Google did not return an email');
+            await onGoogleAuth({
+              email: profile.email,
+              name: profile.name || profile.given_name || 'Google User',
+              avatarUrl: profile.picture,
+              userType: savedRole,
+              college: savedCollege,
+              canteenName: savedRole === 'COLLEGE' ? savedCanteen : undefined,
+            });
+          })
+          .catch((err) => {
+            console.error('OAuth redirect processing error:', err);
+            setError(err.message || 'Google sign-in via redirect failed');
+          })
+          .finally(() => {
+            setIsGoogleAuthenticating(false);
+          });
+      }
+    }
+  }, []);
+
   const handleCopy = (text: string, label: string) => {
     navigator.clipboard.writeText(text);
     setCopiedText(label);
@@ -202,7 +283,7 @@ export const LandingPage: React.FC<LandingPageProps> = ({
   const handleGoogleButtonClick = () => {
     setError(null);
 
-    // If Google OAuth2 client is loaded in window, launch the genuine Google Sign-In popup!
+    // If Google OAuth2 client is loaded in window, launch Google Sign-In!
     if (window.google?.accounts?.oauth2) {
       try {
         setIsGoogleAuthenticating(true);
@@ -252,7 +333,12 @@ export const LandingPage: React.FC<LandingPageProps> = ({
           },
           error_callback: (err: any) => {
             setIsGoogleAuthenticating(false);
-            console.error('Google OAuth popup error:', err);
+            console.warn('Google popup error, falling back to OAuth redirect:', err);
+            // If popup failed to open or was blocked by browser, automatically execute the redirect flow!
+            if (err?.message?.includes('popup') || err?.type === 'popup_failed_to_open') {
+              redirectToGoogleOAuth();
+              return;
+            }
             setError(
               err.message ||
                 'Google sign-in popup encountered an error. Please verify Authorized JavaScript origins in Google Cloud Console.'
@@ -264,27 +350,14 @@ export const LandingPage: React.FC<LandingPageProps> = ({
         return;
       } catch (err: any) {
         setIsGoogleAuthenticating(false);
-        console.error('Failed to trigger Google popup:', err);
-        setError('Error initiating Google sign-in: ' + err.message);
+        console.warn('Popup execution error, falling back to redirect:', err);
+        redirectToGoogleOAuth();
         return;
       }
     }
 
-    // Fallback: If Google script has not loaded yet, wait briefly or open the setup modal
-    setIsGoogleAuthenticating(true);
-    let attempts = 0;
-    const checkTimer = setInterval(() => {
-      attempts++;
-      if (window.google?.accounts?.oauth2) {
-        clearInterval(checkTimer);
-        setIsGoogleAuthenticating(false);
-        handleGoogleButtonClick();
-      } else if (attempts > 6) {
-        clearInterval(checkTimer);
-        setIsGoogleAuthenticating(false);
-        setShowGoogleModal(true);
-      }
-    }, 250);
+    // Fallback: If Google script has not loaded yet, execute direct OAuth redirect!
+    redirectToGoogleOAuth();
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -437,11 +510,24 @@ export const LandingPage: React.FC<LandingPageProps> = ({
 
               {/* Global Error Banner */}
               {error && (
-                <div className="p-3 rounded-xl bg-rose-50 border border-rose-200 text-xs font-semibold text-rose-700 flex items-start gap-2 animate-in fade-in">
-                  <AlertCircle className="w-4 h-4 shrink-0 text-rose-600 mt-0.5" />
-                  <div className="leading-snug">
-                    {error}
+                <div className="p-3.5 rounded-2xl bg-rose-50 border border-rose-200 text-xs font-semibold text-rose-700 space-y-2.5 animate-in fade-in">
+                  <div className="flex items-start gap-2">
+                    <AlertCircle className="w-4 h-4 shrink-0 text-rose-600 mt-0.5" />
+                    <div className="leading-snug">
+                      {error}
+                    </div>
                   </div>
+                  {error.toLowerCase().includes('popup') && (
+                    <button
+                      type="button"
+                      onClick={redirectToGoogleOAuth}
+                      className="w-full py-2 px-3 rounded-xl bg-rose-600 hover:bg-rose-700 text-white font-bold text-xs shadow-xs transition-all cursor-pointer flex items-center justify-center gap-2 active:scale-98"
+                    >
+                      <GoogleIcon className="w-3.5 h-3.5" />
+                      <span>Continue with Google (Full-Page Redirect)</span>
+                      <ArrowRight className="w-3.5 h-3.5" />
+                    </button>
+                  )}
                 </div>
               )}
 
