@@ -128,6 +128,28 @@ export const api = {
     return data;
   },
 
+  async sendVerificationCode(email: string): Promise<{ success: boolean; message: string; isEmailConfigured: boolean; previewCode?: string }> {
+    const res = await fetch('/api/auth/send-verification-code', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ email }),
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error || 'Failed to send verification code');
+    return data;
+  },
+
+  async verifyCode(email: string, code: string): Promise<{ success: boolean; verified: boolean; message: string }> {
+    const res = await fetch('/api/auth/verify-code', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ email, code }),
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error || 'Invalid or expired verification code');
+    return data;
+  },
+
   async register(userData: any): Promise<{ user: User; token: string }> {
     const res = await fetch('/api/auth/register', {
       method: 'POST',

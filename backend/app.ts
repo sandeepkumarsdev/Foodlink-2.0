@@ -10,8 +10,9 @@ import {
   mapRowToUser, 
   mapRowToFoodPost, 
   mapRowToNotification, 
-  mapRowToClaim 
+  mapRowToClaim
 } from './server/db.js';
+import { sendVerificationEmail, isEmailConfigured } from './server/mailer.js';
 import { FoodPost, User, NotificationItem, Claim, RealtimeEvent, DashboardStats } from './types/index.js';
 
 const app = express();
@@ -238,6 +239,91 @@ app.post('/api/auth/login', async (req: Request, res: Response) => {
   }
 });
 
+// Email Verification Endpoints
+app.post('/api/auth/send-verification-code', async (req: Request, res: Response) => {
+  const { email } = req.body;
+
+  if (!email || !email.trim() || !email.includes('@')) {
+    return res.status(400).json({ error: 'Please provide a valid email address.' });
+  }
+
+  const cleanEmail = email.trim().toLowerCase();
+
+  try {
+    // 1. Check if user already exists
+    const existing = await query(`SELECT id FROM users WHERE LOWER(email) = $1 LIMIT 1`, [cleanEmail]);
+    if (existing.rows.length > 0) {
+      return res.status(409).json({ error: 'An account with this email already exists. Please log in instead.' });
+    }
+
+    // 2. Invalidate previous codes for this email
+    await query(`DELETE FROM email_verifications WHERE LOWER(email) = $1`, [cleanEmail]);
+
+    // 3. Generate a secure 6-digit numeric OTP code
+    const code = Math.floor(100000 + Math.random() * 900000).toString();
+    const verifId = 'vcode_' + crypto.randomUUID().slice(0, 8);
+    const expiresAt = new Date(Date.now() + 10 * 60 * 1000).toISOString(); // 10 minutes
+
+    // 4. Save to PostgreSQL
+    await query(
+      `INSERT INTO email_verifications (id, email, code, expires_at, verified, created_at)
+       VALUES ($1, $2, $3, $4, FALSE, NOW())`,
+      [verifId, cleanEmail, code, expiresAt]
+    );
+
+    // 5. Send Email
+    const emailResult = await sendVerificationEmail(cleanEmail, code);
+
+    res.json({
+      success: true,
+      message: emailResult.sent 
+        ? `Verification code sent to ${cleanEmail}`
+        : `Verification code generated for ${cleanEmail}`,
+      isEmailConfigured: emailResult.sent,
+      previewCode: emailResult.previewCode, // Included when SMTP is not configured for easy testing
+    });
+  } catch (err: any) {
+    console.error('Error sending verification code:', err);
+    res.status(500).json({ error: 'Failed to send verification code. ' + err.message });
+  }
+});
+
+app.post('/api/auth/verify-code', async (req: Request, res: Response) => {
+  const { email, code } = req.body;
+
+  if (!email || !code) {
+    return res.status(400).json({ error: 'Email and 6-digit verification code are required.' });
+  }
+
+  const cleanEmail = email.trim().toLowerCase();
+  const cleanCode = code.trim();
+
+  try {
+    const recordRes = await query(
+      `SELECT * FROM email_verifications 
+       WHERE LOWER(email) = $1 AND code = $2 AND expires_at > NOW() 
+       ORDER BY created_at DESC LIMIT 1`,
+      [cleanEmail, cleanCode]
+    );
+
+    if (recordRes.rows.length === 0) {
+      return res.status(400).json({ error: 'Invalid or expired verification code. Please check or request a new code.' });
+    }
+
+    // Mark code as verified
+    await query(`UPDATE email_verifications SET verified = TRUE WHERE id = $1`, [recordRes.rows[0].id]);
+
+    res.json({
+      success: true,
+      verified: true,
+      message: 'Email verified successfully! You can now complete creating your account.',
+    });
+  } catch (err: any) {
+    console.error('Error verifying code:', err);
+    res.status(500).json({ error: 'Database error during code verification.' });
+  }
+});
+
 app.post('/api/auth/register', async (req: Request, res: Response) => {
   const { name, email, password, phone, userType, college, canteenName } = req.body;
 
@@ -249,8 +335,24 @@ app.post('/api/auth/register', async (req: Request, res: Response) => {
     return res.status(400).json({ error: 'A secure password of at least 6 characters is required for this account' });
   }
 
+  const cleanEmail = email.trim().toLowerCase();
+
   try {
-    const existing = await query(`SELECT id FROM users WHERE LOWER(email) = LOWER($1) LIMIT 1`, [email.trim()]);
+    // 1. Verify that email has been confirmed with a valid verification code
+    const verifRes = await query(
+      `SELECT id FROM email_verifications 
+       WHERE LOWER(email) = $1 AND verified = TRUE AND expires_at > NOW() - INTERVAL '30 minutes' 
+       LIMIT 1`,
+      [cleanEmail]
+    );
+
+    if (verifRes.rows.length === 0) {
+      return res.status(403).json({ 
+        error: 'Please verify your email address with the 6-digit code before creating an account.' 
+      });
+    }
+
+    const existing = await query(`SELECT id FROM users WHERE LOWER(email) = $1 LIMIT 1`, [cleanEmail]);
     if (existing.rows.length > 0) {
       return res.status(409).json({ error: 'An account with this email already exists in PostgreSQL' });
     }
@@ -265,7 +367,7 @@ app.post('/api/auth/register', async (req: Request, res: Response) => {
       [
         newId,
         name.trim(),
-        email.trim(),
+        cleanEmail,
         passwordHash,
         phone || '+1 (555) 000-0000',
         userType,
@@ -275,6 +377,9 @@ app.post('/api/auth/register', async (req: Request, res: Response) => {
         'https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?auto=format&fit=crop&w=200&q=80',
       ]
     );
+
+    // Clean up verification records for this email after successful registration
+    await query(`DELETE FROM email_verifications WHERE LOWER(email) = $1`, [cleanEmail]);
 
     const newUser = mapRowToUser(insertRes.rows[0]);
     res.status(201).json({ user: newUser, token: 'mock-jwt-token-' + newUser.id });
