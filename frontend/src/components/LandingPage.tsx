@@ -103,12 +103,21 @@ export const LandingPage: React.FC<LandingPageProps> = ({
     googleClientId.length > 10
   );
 
-  // Initialize Google Identity Services if client ID is configured
+  const selectedRoleRef = React.useRef(selectedRole);
+  selectedRoleRef.current = selectedRole;
+  const collegeRef = React.useRef(college);
+  collegeRef.current = college;
+  const canteenNameRef = React.useRef(canteenName);
+  canteenNameRef.current = canteenName;
+
+  // Initialize Google Identity Services once on mount if client ID is configured
   useEffect(() => {
     if (!isGoogleConfigured) return;
 
+    let isMounted = true;
+
     const initGsi = () => {
-      if (window.google?.accounts?.id) {
+      if (window.google?.accounts?.id && isMounted) {
         try {
           window.google.accounts.id.initialize({
             client_id: googleClientId,
@@ -129,9 +138,9 @@ export const LandingPage: React.FC<LandingPageProps> = ({
                   email: payload.email,
                   name: payload.name || payload.given_name || 'Google User',
                   avatarUrl: payload.picture,
-                  userType: selectedRole,
-                  college,
-                  canteenName: selectedRole === 'COLLEGE' ? canteenName : undefined,
+                  userType: selectedRoleRef.current,
+                  college: collegeRef.current,
+                  canteenName: selectedRoleRef.current === 'COLLEGE' ? canteenNameRef.current : undefined,
                 });
               } catch (err: any) {
                 console.error('Google token decode or auth error:', err);
@@ -141,13 +150,6 @@ export const LandingPage: React.FC<LandingPageProps> = ({
             auto_select: false,
             cancel_on_tap_outside: true,
           });
-
-          // Also trigger One-Tap prompt if eligible
-          try {
-            window.google.accounts.id.prompt();
-          } catch {
-            // One-tap prompt suppressed in some browser settings
-          }
         } catch (e) {
           console.warn('GIS initialization error:', e);
         }
@@ -163,9 +165,16 @@ export const LandingPage: React.FC<LandingPageProps> = ({
           initGsi();
         }
       }, 250);
-      return () => clearInterval(interval);
+      return () => {
+        isMounted = false;
+        clearInterval(interval);
+      };
     }
-  }, [isGoogleConfigured, googleClientId, authMode, selectedRole, college, canteenName]);
+
+    return () => {
+      isMounted = false;
+    };
+  }, [isGoogleConfigured, googleClientId]);
 
   const handleCopy = (text: string, label: string) => {
     navigator.clipboard.writeText(text);
@@ -230,9 +239,9 @@ export const LandingPage: React.FC<LandingPageProps> = ({
                 email: profile.email,
                 name: profile.name || profile.given_name || 'Google User',
                 avatarUrl: profile.picture,
-                userType: selectedRole,
-                college,
-                canteenName: selectedRole === 'COLLEGE' ? canteenName : undefined,
+                userType: selectedRoleRef.current,
+                college: collegeRef.current,
+                canteenName: selectedRoleRef.current === 'COLLEGE' ? canteenNameRef.current : undefined,
               });
             } catch (err: any) {
               console.error('Google profile sync error:', err);
