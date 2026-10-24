@@ -8,13 +8,11 @@ import {
   User as UserIcon, 
   LogOut, 
   Cpu, 
-  BookOpen, 
   CheckCircle2, 
   ChevronDown,
-  RefreshCw,
-  Zap
+  RefreshCw
 } from 'lucide-react';
-import { User, NotificationItem } from '../types';
+import { User } from '../types';
 import { CAMPUS_OPTIONS } from '../utils/helpers';
 
 interface NavbarProps {
@@ -28,8 +26,8 @@ interface NavbarProps {
   onLogout: () => void;
   activeTab: 'browse' | 'my-claims' | 'canteen' | 'stats';
   setActiveTab: (tab: 'browse' | 'my-claims' | 'canteen' | 'stats') => void;
-  onOpenRaceModal: () => void;
-  onOpenDocsModal: () => void;
+  onOpenRaceModal?: () => void;
+  onOpenDocsModal?: () => void;
   onOpenPostFood: () => void;
   isSseConnected: boolean;
   onResetDemo: () => void;
@@ -75,26 +73,6 @@ export const Navbar: React.FC<NavbarProps> = ({
             <span className="hidden sm:inline text-emerald-200/80">
               Campus Surplus Food Rescue Platform
             </span>
-          </div>
-
-          <div className="flex items-center gap-3">
-            <button
-              onClick={onOpenRaceModal}
-              className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-emerald-800/80 hover:bg-emerald-700 text-emerald-100 text-[11px] font-semibold transition-colors border border-emerald-700/60"
-              title="Test backend concurrency under simultaneous load"
-            >
-              <Zap className="w-3 h-3 text-amber-300" />
-              <span>Simulate Concurrency Race</span>
-            </button>
-
-            <button
-              onClick={onOpenDocsModal}
-              className="inline-flex items-center gap-1 text-[11px] text-emerald-300 hover:text-white transition-colors"
-            >
-              <BookOpen className="w-3 h-3" />
-              <span>Specs & Architecture</span>
-            </button>
-
           </div>
         </div>
       </div>
