@@ -187,10 +187,14 @@ export const LandingPage: React.FC<LandingPageProps> = ({
 
   const redirectToGoogleOAuth = () => {
     try {
-      const currentOrigin = window.location.origin;
+      const isLocalhost = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
+      const redirectUri = isLocalhost
+        ? window.location.origin
+        : 'https://foodlink-20.vercel.app';
+
       const authUrl = new URL('https://accounts.google.com/o/oauth2/v2/auth');
       authUrl.searchParams.set('client_id', googleClientId);
-      authUrl.searchParams.set('redirect_uri', currentOrigin);
+      authUrl.searchParams.set('redirect_uri', redirectUri);
       authUrl.searchParams.set('response_type', 'token');
       authUrl.searchParams.set('scope', 'openid email profile');
       authUrl.searchParams.set('prompt', 'select_account');
