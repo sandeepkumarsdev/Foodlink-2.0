@@ -24,7 +24,9 @@ export async function sendVerificationEmail(email: string, code: string): Promis
     port: process.env.SMTP_PORT ? parseInt(process.env.SMTP_PORT, 10) : undefined,
     secure: process.env.SMTP_SECURE === 'true',
     auth: { user, pass },
-  });
+    family: 4,
+    connectionTimeout: 10000,
+  } as any);
 
   const mailHtml = `
     <!DOCTYPE html>

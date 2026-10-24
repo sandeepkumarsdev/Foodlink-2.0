@@ -42116,7 +42116,9 @@ async function sendVerificationEmail(email, code) {
     host: process.env.SMTP_HOST || void 0,
     port: process.env.SMTP_PORT ? parseInt(process.env.SMTP_PORT, 10) : void 0,
     secure: process.env.SMTP_SECURE === "true",
-    auth: { user, pass }
+    auth: { user, pass },
+    family: 4,
+    connectionTimeout: 1e4
   });
   const mailHtml = `
     <!DOCTYPE html>
