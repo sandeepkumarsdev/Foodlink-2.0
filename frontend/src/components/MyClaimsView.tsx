@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState, useEffect } from 'react';
 import { 
   ShoppingBag, 
   MapPin, 
@@ -10,10 +10,12 @@ import {
   ArrowRight,
   Sparkles,
   AlertCircle,
-  Tag
+  Tag,
+  Utensils
 } from 'lucide-react';
 import { FoodPost, User } from '../types';
 import { formatTimeRemaining, formatDateTime, formatFoodPrice } from '../utils/helpers';
+import { api } from '../services/api';
 
 interface MyClaimsViewProps {
   currentUser: User | null;
@@ -30,12 +32,38 @@ export const MyClaimsView: React.FC<MyClaimsViewProps> = ({
   onBrowseFood,
   onUnclaim,
 }) => {
+  const [myClaims, setMyClaims] = useState<FoodPost[]>([]);
+
+  useEffect(() => {
+    if (!currentUser) return;
+    api.getMyClaims(currentUser.id)
+      .then(setMyClaims)
+      .catch(() => {
+        // Fallback to filtering foodPosts
+        const fallback = foodPosts
+          .filter((p) => p.claimedBy === currentUser.id || p.claims?.some(c => c.userId === currentUser.id))
+          .map(p => {
+            const c = p.claims?.find(claim => claim.userId === currentUser.id);
+            if (c) {
+              return {
+                ...p,
+                claimCode: c.claimCode || p.claimCode,
+                claimedPortions: c.portions || 1,
+                totalClaimPrice: c.totalPrice !== undefined ? c.totalPrice : (p.price * (c.portions || 1)),
+                status: c.status,
+                quantity: `${c.portions || 1} portions reserved`,
+              };
+            }
+            return p;
+          });
+        setMyClaims(fallback);
+      });
+  }, [currentUser?.id, foodPosts]);
+
   if (!currentUser) return null;
 
-  // Filter posts where claimedBy === currentUser.id
-  const myPosts = foodPosts.filter((p) => p.claimedBy === currentUser.id);
-  const activeClaims = myPosts.filter((p) => p.status === 'CLAIMED');
-  const collectedClaims = myPosts.filter((p) => p.status === 'COLLECTED');
+  const activeClaims = myClaims.filter((p) => p.status === 'CLAIMED');
+  const collectedClaims = myClaims.filter((p) => p.status === 'COLLECTED');
 
   return (
     <div className="max-w-5xl mx-auto px-4 sm:px-6 lg:px-8 py-8 space-y-8">
@@ -53,7 +81,7 @@ export const MyClaimsView: React.FC<MyClaimsViewProps> = ({
 
         <button
           onClick={onBrowseFood}
-          className="inline-flex items-center gap-2 px-4 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-sm shadow-xs transition-colors self-start sm:self-center"
+          className="inline-flex items-center gap-2 px-4 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-sm shadow-xs transition-colors self-start sm:self-center cursor-pointer"
         >
           <span>Browse Available Food</span>
           <ArrowRight className="w-4 h-4" />
@@ -84,7 +112,7 @@ export const MyClaimsView: React.FC<MyClaimsViewProps> = ({
             </p>
             <button
               onClick={onBrowseFood}
-              className="px-4 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs shadow-xs"
+              className="px-4 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs shadow-xs cursor-pointer"
             >
               Explore Available Surplus Meals
             </button>
@@ -93,7 +121,11 @@ export const MyClaimsView: React.FC<MyClaimsViewProps> = ({
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             {activeClaims.map((post) => {
               const timeInfo = formatTimeRemaining(post.collectionDeadline);
-              const priceInfo = formatFoodPrice(post.price, post.originalPrice);
+              const portionsCount = post.claimedPortions || 1;
+              const totalDue = post.totalClaimPrice !== undefined 
+                ? post.totalClaimPrice 
+                : (post.price * portionsCount);
+
               return (
                 <div
                   key={post.id}
@@ -111,7 +143,7 @@ export const MyClaimsView: React.FC<MyClaimsViewProps> = ({
                           </span>
                           <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[11px] font-black bg-amber-100 text-amber-900 border border-amber-200">
                             <Tag className="w-3 h-3 text-amber-600" />
-                            {priceInfo.priceFormatted}
+                            {totalDue > 0 ? `₹${totalDue.toFixed(2)}` : 'FREE'}
                           </span>
                         </div>
                         <h3 className="text-lg font-black text-slate-900 line-clamp-1">
@@ -137,12 +169,16 @@ export const MyClaimsView: React.FC<MyClaimsViewProps> = ({
                     {/* Quantity, Price Due & Deadline */}
                     <div className="grid grid-cols-3 gap-2 my-3 p-3 bg-slate-50 rounded-xl border border-slate-100 text-xs">
                       <div>
-                        <span className="text-slate-400 block font-medium">Quantity:</span>
-                        <span className="font-bold text-slate-800">{post.quantity}</span>
+                        <span className="text-slate-400 block font-medium">Reserved:</span>
+                        <span className="font-bold text-slate-800">
+                          {portionsCount} portion{portionsCount > 1 ? 's' : ''}
+                        </span>
                       </div>
                       <div>
                         <span className="text-slate-400 block font-medium">Pay at Counter:</span>
-                        <span className="font-black text-emerald-700">{priceInfo.priceFormatted}</span>
+                        <span className="font-black text-emerald-700">
+                          {totalDue > 0 ? `₹${totalDue.toFixed(2)}` : 'FREE'}
+                        </span>
                       </div>
                       <div>
                         <span className="text-slate-400 block font-medium">Collect Before:</span>
@@ -151,6 +187,14 @@ export const MyClaimsView: React.FC<MyClaimsViewProps> = ({
                         </span>
                       </div>
                     </div>
+
+                    {/* Remaining Portions Information */}
+                    {post.remainingServings !== undefined && post.remainingServings > 0 && (
+                      <div className="text-[11px] text-emerald-800 bg-emerald-50 px-2.5 py-1 rounded-lg border border-emerald-100 mb-3 flex items-center gap-1.5 font-medium">
+                        <Utensils className="w-3 h-3 text-emerald-600 shrink-0" />
+                        <span>{post.remainingServings} portions of this post still available to claim</span>
+                      </div>
+                    )}
 
                     {/* Location */}
                     <div className="flex items-start gap-1.5 text-xs text-slate-600 mb-4">
@@ -166,7 +210,7 @@ export const MyClaimsView: React.FC<MyClaimsViewProps> = ({
                   <div className="flex items-center gap-2 pt-3 border-t border-slate-100">
                     <button
                       onClick={() => onViewDetails(post)}
-                      className="flex-1 py-2 px-3 rounded-xl bg-slate-900 hover:bg-slate-800 text-white font-bold text-xs transition-colors flex items-center justify-center gap-1.5"
+                      className="flex-1 py-2 px-3 rounded-xl bg-slate-900 hover:bg-slate-800 text-white font-bold text-xs transition-colors flex items-center justify-center gap-1.5 cursor-pointer"
                     >
                       <QrCode className="w-4 h-4" />
                       <span>View Full Voucher</span>
@@ -174,7 +218,7 @@ export const MyClaimsView: React.FC<MyClaimsViewProps> = ({
 
                     <button
                       onClick={() => onUnclaim(post)}
-                      className="p-2 rounded-xl border border-slate-200 text-slate-600 hover:text-rose-600 hover:bg-rose-50 hover:border-rose-200 transition-colors text-xs font-semibold"
+                      className="p-2 rounded-xl border border-slate-200 text-slate-600 hover:text-rose-600 hover:bg-rose-50 hover:border-rose-200 transition-colors text-xs font-semibold cursor-pointer"
                       title="Release claim so another student can collect"
                     >
                       <RotateCcw className="w-4 h-4" />

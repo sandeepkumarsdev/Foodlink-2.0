@@ -30,7 +30,15 @@ export const FoodCard: React.FC<FoodCardProps> = ({
 }) => {
   const timeInfo = formatTimeRemaining(post.collectionDeadline);
   const priceInfo = formatFoodPrice(post.price, post.originalPrice);
-  const isClaimedByMe = currentUser && post.claimedBy === currentUser.id;
+  const myClaim = currentUser && post.claims 
+    ? post.claims.find(c => c.userId === currentUser.id && c.status === 'CLAIMED')
+    : undefined;
+  const isClaimedByMe = Boolean(myClaim || (currentUser && post.claimedBy === currentUser.id));
+
+  const remaining = post.remainingServings !== undefined ? post.remainingServings : (post.servingsCount || 1);
+  const quantityDisplay = post.remainingServings !== undefined 
+    ? (remaining > 0 ? `${remaining} portions left` : 'Fully Claimed')
+    : post.quantity;
 
   // Status styling configurations
   const statusConfig = {
@@ -95,10 +103,11 @@ export const FoodCard: React.FC<FoodCardProps> = ({
         <div className="absolute top-3 left-3 flex flex-col gap-1.5 items-start">
           <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-bold border shadow-xs backdrop-blur-md ${statusConfig.badge}`}>
             <span className={`w-2 h-2 rounded-full ${statusConfig.dot} ${post.status === 'AVAILABLE' ? 'animate-pulse' : ''}`} />
-            {isClaimedByMe ? 'YOUR CLAIM' : statusConfig.label}
+            {isClaimedByMe ? `YOUR CLAIM (${myClaim?.portions || post.claimedPortions || 1})` : statusConfig.label}
           </span>
           <div className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-lg bg-slate-950/80 text-white backdrop-blur-md shadow-xs border border-white/10">
             <span className="text-xs font-black text-amber-300">{priceInfo.priceFormatted}</span>
+            <span className="text-[10px] text-slate-300 font-normal">/ portion</span>
             {priceInfo.originalPriceFormatted && (
               <span className="text-[10px] text-slate-400 line-through">{priceInfo.originalPriceFormatted}</span>
             )}
@@ -126,7 +135,7 @@ export const FoodCard: React.FC<FoodCardProps> = ({
         <div className="absolute bottom-3 left-3 right-3 flex items-center justify-between text-white">
           <span className="inline-flex items-center gap-1 text-xs font-bold bg-emerald-600/90 backdrop-blur-sm px-2.5 py-1 rounded-lg shadow-xs">
             <Sparkles className="w-3 h-3" />
-            {post.quantity}
+            {quantityDisplay}
           </span>
 
           {/* Time Remaining Pill */}
@@ -209,19 +218,19 @@ export const FoodCard: React.FC<FoodCardProps> = ({
             <span className="text-[10px] text-slate-400 font-medium">Pay on collection</span>
           </div>
 
-          {post.status === 'AVAILABLE' ? (
+          {post.status === 'AVAILABLE' && remaining > 0 ? (
             <div className="flex items-center gap-2">
               <button
                 onClick={() => onClaimClick(post)}
                 className="flex-1 py-2.5 px-3 rounded-xl font-bold text-xs sm:text-sm bg-emerald-600 hover:bg-emerald-700 text-white shadow-sm hover:shadow-emerald-500/20 transition-all flex items-center justify-center gap-1.5 active:scale-98 cursor-pointer"
               >
-                <span>Claim Meal · {priceInfo.priceFormatted}</span>
+                <span>Claim Portions · {priceInfo.priceFormatted}</span>
                 <ChevronRight className="w-4 h-4" />
               </button>
               <button
                 onClick={() => onViewDetails(post)}
-                className="p-2.5 rounded-xl border border-slate-200 text-slate-600 hover:text-slate-900 hover:bg-slate-50 transition-colors"
-                title="View full details"
+                className="p-2.5 rounded-xl border border-slate-200 text-slate-600 hover:text-slate-900 hover:bg-slate-50 transition-colors cursor-pointer"
+                title="View full details and select portions"
               >
                 <Utensils className="w-4 h-4" />
               </button>
@@ -229,15 +238,15 @@ export const FoodCard: React.FC<FoodCardProps> = ({
           ) : isClaimedByMe ? (
             <button
               onClick={() => onViewDetails(post)}
-              className="w-full py-2.5 px-4 rounded-xl font-bold text-sm bg-gradient-to-r from-emerald-600 to-teal-600 text-white shadow-sm flex items-center justify-center gap-2 hover:opacity-95 transition-all"
+              className="w-full py-2.5 px-4 rounded-xl font-bold text-xs sm:text-sm bg-gradient-to-r from-emerald-600 to-teal-600 text-white shadow-sm flex items-center justify-center gap-2 hover:opacity-95 transition-all cursor-pointer"
             >
               <CheckCircle className="w-4 h-4" />
-              <span>You Claimed This · Code: {post.claimCode || 'View'}</span>
+              <span>Reserved ({myClaim?.portions || post.claimedPortions || 1} portions) · Code: {myClaim?.claimCode || post.claimCode || 'View'}</span>
             </button>
-          ) : post.status === 'CLAIMED' ? (
+          ) : post.status === 'CLAIMED' || remaining <= 0 ? (
             <div className="w-full py-2.5 px-4 rounded-xl text-xs font-bold bg-amber-50 text-amber-800 border border-amber-200 text-center flex items-center justify-center gap-1.5">
               <AlertCircle className="w-4 h-4 text-amber-600" />
-              <span>Already Claimed {post.claimantName ? `by ${post.claimantName}` : ''}</span>
+              <span>All Portions Claimed</span>
             </div>
           ) : post.status === 'COLLECTED' ? (
             <div className="w-full py-2 px-4 rounded-xl text-xs font-bold bg-blue-50 text-blue-800 border border-blue-200 text-center flex items-center justify-center gap-1.5">

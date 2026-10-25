@@ -31,7 +31,7 @@ export const api = {
   },
 
   // Atomic Claim Endpoint
-  async claimFood(id: string, user: { id: string; name: string; phone?: string }): Promise<{
+  async claimFood(id: string, user: { id: string; name: string; phone?: string }, portions: number = 1): Promise<{
     success: boolean;
     message: string;
     foodPost: FoodPost;
@@ -44,6 +44,7 @@ export const api = {
         userId: user.id,
         userName: user.name,
         userPhone: user.phone,
+        portions,
       }),
     });
 
@@ -58,15 +59,21 @@ export const api = {
     return data;
   },
 
-  async markCollected(id: string, verifiedCode?: string): Promise<{ success: boolean; foodPost: FoodPost }> {
+  async markCollected(id: string, verifiedCode?: string, claimId?: string): Promise<{ success: boolean; foodPost: FoodPost }> {
     const res = await fetch(`/api/food-posts/${id}/collect`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ verifiedCode }),
+      body: JSON.stringify({ verifiedCode, claimId }),
     });
     const data = await res.json();
     if (!res.ok) throw new Error(data.error || 'Failed to mark as collected');
     return data;
+  },
+
+  async getMyClaims(userId: string): Promise<FoodPost[]> {
+    const res = await fetch(`/api/claims/my-claims?userId=${encodeURIComponent(userId)}`);
+    if (!res.ok) throw new Error('Failed to fetch user claims');
+    return res.json();
   },
 
   async cancelPost(id: string, reason?: string): Promise<{ success: boolean; foodPost: FoodPost }> {

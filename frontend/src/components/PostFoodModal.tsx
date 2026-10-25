@@ -237,30 +237,42 @@ export const PostFoodModal: React.FC<PostFoodModalProps> = ({
           {/* Quantity & Servings count */}
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div>
-              <label className="block text-xs font-bold uppercase tracking-wider text-slate-700 mb-1.5">
-                Quantity Label *
-              </label>
-              <input
-                type="text"
-                required
-                placeholder="e.g. 20 portions / 15 meal boxes"
-                value={quantity}
-                onChange={(e) => setQuantity(e.target.value)}
-                className="w-full text-xs px-3.5 py-2.5 rounded-xl border border-slate-300 focus:outline-emerald-500 font-medium"
-              />
-            </div>
-
-            <div>
-              <label className="block text-xs font-bold uppercase tracking-wider text-slate-700 mb-1.5">
-                Portions Count (for Impact Stats)
+              <label className="block text-xs font-bold uppercase tracking-wider text-slate-700 mb-1.5 flex items-center justify-between">
+                <span>Total Portions Available *</span>
+                <span className="text-[10px] text-emerald-700 font-bold bg-emerald-100 px-1.5 py-0.2 rounded">Multiple claims supported</span>
               </label>
               <input
                 type="number"
                 min={1}
+                required
                 value={servingsCount}
-                onChange={(e) => setServingsCount(parseInt(e.target.value, 10) || 1)}
+                onChange={(e) => {
+                  const val = parseInt(e.target.value, 10) || 1;
+                  setServingsCount(val);
+                  setQuantity(`${val} portions available`);
+                }}
+                className="w-full text-xs px-3.5 py-2.5 rounded-xl border border-slate-300 focus:outline-emerald-500 font-bold text-slate-900"
+              />
+              <p className="text-[10px] text-slate-500 mt-1">
+                Students can choose their needed portions (e.g. 6 of 20).
+              </p>
+            </div>
+
+            <div>
+              <label className="block text-xs font-bold uppercase tracking-wider text-slate-700 mb-1.5">
+                Display Label
+              </label>
+              <input
+                type="text"
+                required
+                placeholder="e.g. 20 portions available"
+                value={quantity}
+                onChange={(e) => setQuantity(e.target.value)}
                 className="w-full text-xs px-3.5 py-2.5 rounded-xl border border-slate-300 focus:outline-emerald-500 font-medium"
               />
+              <p className="text-[10px] text-slate-500 mt-1">
+                Shown to students in the feed and cards.
+              </p>
             </div>
           </div>
 
@@ -283,7 +295,7 @@ export const PostFoodModal: React.FC<PostFoodModalProps> = ({
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               <div>
                 <label className="block text-[11px] font-bold text-slate-700 mb-1">
-                  Selling Price for Students (₹) *
+                  Price per Portion for Students (₹) *
                 </label>
                 <div className="relative">
                   <span className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-500 font-bold text-sm">₹</span>

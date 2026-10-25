@@ -9,6 +9,7 @@ import {
   ShieldCheck, 
   ShieldAlert, 
   User as UserIcon, 
+  Users,
   Phone, 
   XCircle, 
   Check, 
@@ -27,7 +28,7 @@ interface CollegeDashboardProps {
   foodPosts: FoodPost[];
   stats: DashboardStats | null;
   onOpenPostFood: () => void;
-  onMarkCollected: (postId: string, code?: string) => Promise<void>;
+  onMarkCollected: (postId: string, code?: string, claimId?: string) => Promise<void>;
   onCancelPost: (postId: string, reason?: string) => Promise<void>;
   onToggleVerification: (userId: string) => Promise<void>;
 }
@@ -43,6 +44,7 @@ export const CollegeDashboard: React.FC<CollegeDashboardProps> = ({
 }) => {
   const [activeTab, setActiveTab] = useState<'ALL' | 'AVAILABLE' | 'CLAIMED' | 'COLLECTED' | 'EXPIRED'>('CLAIMED');
   const [verifyingPostId, setVerifyingPostId] = useState<string | null>(null);
+  const [verifyingClaimId, setVerifyingClaimId] = useState<string | null>(null);
   const [inputCode, setInputCode] = useState('');
   const [cancelModalPost, setCancelModalPost] = useState<FoodPost | null>(null);
   const [cancelReason, setCancelReason] = useState('Surplus food consumed or no longer suitable');
@@ -54,13 +56,21 @@ export const CollegeDashboard: React.FC<CollegeDashboardProps> = ({
     return p.canteenName === currentUser.canteenName || p.collegeName === currentUser.college;
   });
 
-  const availableCount = canteenPosts.filter((p) => p.status === 'AVAILABLE').length;
-  const claimedCount = canteenPosts.filter((p) => p.status === 'CLAIMED').length;
+  const availableCount = canteenPosts.filter((p) => p.status === 'AVAILABLE' && (p.remainingServings ?? p.servingsCount) > 0).length;
+  const claimedCount = canteenPosts.filter((p) => 
+    p.status === 'CLAIMED' || (p.claims && p.claims.some((c) => c.status === 'CLAIMED'))
+  ).length;
   const collectedCount = canteenPosts.filter((p) => p.status === 'COLLECTED').length;
   const expiredCount = canteenPosts.filter((p) => p.status === 'EXPIRED').length;
 
   const filteredPosts = canteenPosts.filter((p) => {
     if (activeTab === 'ALL') return true;
+    if (activeTab === 'CLAIMED') {
+      return p.status === 'CLAIMED' || (p.claims && p.claims.some((c) => c.status === 'CLAIMED'));
+    }
+    if (activeTab === 'AVAILABLE') {
+      return p.status === 'AVAILABLE' && (p.remainingServings ?? p.servingsCount) > 0;
+    }
     return p.status === activeTab;
   });
 
@@ -69,6 +79,17 @@ export const CollegeDashboard: React.FC<CollegeDashboardProps> = ({
     try {
       await onMarkCollected(postId, inputCode || undefined);
       setVerifyingPostId(null);
+      setInputCode('');
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
+  const handleVerifyClaimSubmit = async (postId: string, claimId: string) => {
+    setIsSubmitting(true);
+    try {
+      await onMarkCollected(postId, inputCode || undefined, claimId);
+      setVerifyingClaimId(null);
       setInputCode('');
     } finally {
       setIsSubmitting(false);
@@ -288,12 +309,15 @@ export const CollegeDashboard: React.FC<CollegeDashboardProps> = ({
               const timeInfo = formatTimeRemaining(post.collectionDeadline);
               const priceInfo = formatFoodPrice(post.price, post.originalPrice);
               const isVerifying = verifyingPostId === post.id;
+              const remaining = post.remainingServings ?? post.servingsCount;
+              const claimedPortions = post.servingsCount - remaining;
+              const hasActiveClaims = post.claims && post.claims.some((c) => c.status === 'CLAIMED');
 
               return (
                 <div
                   key={post.id}
                   className={`bg-white rounded-2xl border transition-all duration-200 overflow-hidden flex flex-col justify-between ${
-                    post.status === 'CLAIMED'
+                    hasActiveClaims || post.status === 'CLAIMED'
                       ? 'border-amber-300 ring-2 ring-amber-400/30 shadow-md'
                       : post.status === 'AVAILABLE'
                         ? 'border-emerald-200 shadow-xs'
@@ -309,7 +333,7 @@ export const CollegeDashboard: React.FC<CollegeDashboardProps> = ({
                     />
                     <div className="absolute inset-0 bg-gradient-to-t from-black/70 via-transparent to-transparent" />
 
-                    <div className="absolute top-3 left-3">
+                    <div className="absolute top-3 left-3 flex items-center gap-1.5">
                       <span className={`px-2.5 py-1 rounded-full text-[11px] font-bold tracking-wide uppercase shadow-xs ${
                         post.status === 'AVAILABLE'
                           ? 'bg-emerald-500 text-white'
@@ -321,6 +345,11 @@ export const CollegeDashboard: React.FC<CollegeDashboardProps> = ({
                       }`}>
                         {post.status}
                       </span>
+                      {hasActiveClaims && post.status === 'AVAILABLE' && (
+                        <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-amber-500 text-white shadow-xs">
+                          Pickup Pending
+                        </span>
+                      )}
                     </div>
 
                     {/* Price Tag Overlay */}
@@ -332,7 +361,7 @@ export const CollegeDashboard: React.FC<CollegeDashboardProps> = ({
                     </div>
 
                     <div className="absolute bottom-2.5 left-3 right-3 flex items-center justify-between text-white text-xs font-bold">
-                      <span>{post.quantity}</span>
+                      <span>{remaining} / {post.servingsCount} portions</span>
                       <span>{timeInfo.text}</span>
                     </div>
                   </div>
@@ -345,15 +374,147 @@ export const CollegeDashboard: React.FC<CollegeDashboardProps> = ({
                           {post.foodName}
                         </h3>
                         <span className="text-xs font-black text-emerald-700 shrink-0">
-                          {priceInfo.priceFormatted}
+                          {priceInfo.priceFormatted} / portion
                         </span>
                       </div>
                       <p className="text-xs text-slate-500 line-clamp-2 mt-1">
                         {post.description}
                       </p>
 
-                      {/* Claimant Contact Box for CLAIMED items */}
-                      {post.status === 'CLAIMED' && (
+                      {/* Portion Inventory Tracker */}
+                      <div className="mt-3 p-2.5 rounded-xl bg-slate-50 border border-slate-200/80 space-y-1.5">
+                        <div className="flex items-center justify-between text-xs font-bold">
+                          <span className="text-slate-600 flex items-center gap-1.5">
+                            <span className={`w-2 h-2 rounded-full ${remaining > 0 ? 'bg-emerald-500' : 'bg-slate-400'}`}></span>
+                            Portions Available:
+                          </span>
+                          <span className="text-slate-900 font-extrabold">
+                            <span className="text-emerald-700">{remaining}</span> / {post.servingsCount}
+                            {claimedPortions > 0 && (
+                              <span className="text-amber-700 font-bold ml-1">({claimedPortions} claimed)</span>
+                            )}
+                          </span>
+                        </div>
+                        <div className="w-full bg-slate-200 h-1.5 rounded-full overflow-hidden">
+                          <div
+                            className="bg-emerald-500 h-full rounded-full transition-all duration-300"
+                            style={{
+                              width: `${Math.min(100, Math.max(0, (remaining / post.servingsCount) * 100))}%`
+                            }}
+                          />
+                        </div>
+                      </div>
+
+                      {/* Detailed Student Claims List if multi-portion claims exist */}
+                      {post.claims && post.claims.length > 0 ? (
+                        <div className="mt-3 space-y-2">
+                          <div className="flex items-center justify-between text-xs font-bold text-slate-700">
+                            <span className="flex items-center gap-1.5">
+                              <Users className="w-3.5 h-3.5 text-amber-600" />
+                              Student Claims ({post.claims.length})
+                            </span>
+                            <span className="text-[10px] px-2 py-0.5 rounded-full bg-amber-100 text-amber-900 font-black">
+                              {claimedPortions} / {post.servingsCount} portions
+                            </span>
+                          </div>
+
+                          <div className="space-y-2">
+                            {post.claims.map((claim) => {
+                              const claimPrice = claim.totalPrice ?? ((claim.portions || 1) * (post.price || 0));
+                              const isVerifyingThisClaim = verifyingClaimId === claim.id;
+
+                              return (
+                                <div
+                                  key={claim.id}
+                                  className={`p-3 rounded-xl border transition-all text-xs space-y-1.5 ${
+                                    claim.status === 'COLLECTED'
+                                      ? 'bg-blue-50/70 border-blue-200'
+                                      : 'bg-amber-50/70 border-amber-200'
+                                  }`}
+                                >
+                                  <div className="flex items-center justify-between">
+                                    <div className="flex items-center gap-1.5 font-bold text-slate-900">
+                                      <UserIcon className="w-3.5 h-3.5 text-amber-700" />
+                                      <span>{claim.userName}</span>
+                                    </div>
+                                    <span className="font-mono text-xs font-black text-amber-950 bg-amber-200/90 px-2 py-0.5 rounded-md border border-amber-300">
+                                      Code: {claim.claimCode}
+                                    </span>
+                                  </div>
+
+                                  {claim.userPhone && (
+                                    <div className="flex items-center gap-1 text-[11px] text-slate-600">
+                                      <Phone className="w-3 h-3 text-amber-600" />
+                                      <span>{claim.userPhone}</span>
+                                    </div>
+                                  )}
+
+                                  <div className="flex items-center justify-between text-xs pt-1 border-t border-amber-200/50">
+                                    <span className="font-semibold text-slate-700">
+                                      Reserved: <strong className="text-slate-900">{claim.portions || 1} portion{(claim.portions || 1) > 1 ? 's' : ''}</strong>
+                                    </span>
+                                    <span className="font-black text-emerald-800">
+                                      Collect: ₹{claimPrice}
+                                    </span>
+                                  </div>
+
+                                  {claim.status === 'CLAIMED' ? (
+                                    <div className="pt-1.5">
+                                      {isVerifyingThisClaim ? (
+                                        <div className="space-y-1.5 bg-white p-2.5 rounded-lg border border-amber-300 shadow-2xs">
+                                          <div className="flex items-center justify-between text-[11px]">
+                                            <span className="font-bold text-slate-700">Student Pickup Code:</span>
+                                            <span className="font-bold text-emerald-700">Collect ₹{claimPrice}</span>
+                                          </div>
+                                          <div className="flex items-center gap-1.5">
+                                            <input
+                                              type="text"
+                                              placeholder={claim.claimCode}
+                                              value={inputCode}
+                                              onChange={(e) => setInputCode(e.target.value.toUpperCase())}
+                                              className="w-full text-xs uppercase font-mono px-2.5 py-1.5 rounded-lg border border-slate-300 font-bold focus:outline-emerald-500"
+                                            />
+                                            <button
+                                              onClick={() => handleVerifyClaimSubmit(post.id, claim.id)}
+                                              disabled={isSubmitting}
+                                              className="px-3 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs shrink-0"
+                                            >
+                                              Confirm
+                                            </button>
+                                            <button
+                                              onClick={() => { setVerifyingClaimId(null); setInputCode(''); }}
+                                              className="text-slate-400 hover:text-slate-600 p-1 text-xs"
+                                            >
+                                              ✕
+                                            </button>
+                                          </div>
+                                        </div>
+                                      ) : (
+                                        <button
+                                          onClick={() => {
+                                            setVerifyingClaimId(claim.id);
+                                            setInputCode(claim.claimCode);
+                                          }}
+                                          className="w-full py-1.5 px-3 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs flex items-center justify-center gap-1.5 shadow-2xs transition-colors cursor-pointer"
+                                        >
+                                          <Check className="w-3.5 h-3.5" />
+                                          <span>Hand Over ({claim.portions || 1} portions · ₹{claimPrice})</span>
+                                        </button>
+                                      )}
+                                    </div>
+                                  ) : (
+                                    <div className="pt-1 text-[11px] font-bold text-blue-700 flex items-center gap-1">
+                                      <CheckCircle className="w-3.5 h-3.5 text-blue-600" />
+                                      <span>Handed over & ₹{claimPrice} collected</span>
+                                    </div>
+                                  )}
+                                </div>
+                              );
+                            })}
+                          </div>
+                        </div>
+                      ) : post.status === 'CLAIMED' ? (
+                        /* Fallback single claimant contact box */
                         <div className="mt-3 p-3 rounded-xl bg-amber-50 border border-amber-200 space-y-1.5">
                           <div className="flex items-center justify-between">
                             <span className="text-[10px] font-bold uppercase tracking-wider text-amber-800">
@@ -378,10 +539,10 @@ export const CollegeDashboard: React.FC<CollegeDashboardProps> = ({
                             <span className="font-black text-emerald-800 text-sm">{priceInfo.priceFormatted}</span>
                           </div>
                         </div>
-                      )}
+                      ) : null}
 
                       {/* Collected details */}
-                      {post.status === 'COLLECTED' && (
+                      {post.status === 'COLLECTED' && (!post.claims || post.claims.length === 0) && (
                         <div className="mt-3 p-2.5 rounded-xl bg-blue-50 border border-blue-100 text-xs text-blue-900 flex items-center justify-between">
                           <div className="flex items-center gap-2">
                             <CheckCircle className="w-4 h-4 text-blue-600 shrink-0" />
@@ -394,7 +555,8 @@ export const CollegeDashboard: React.FC<CollegeDashboardProps> = ({
 
                     {/* Action Bar */}
                     <div className="pt-3 border-t border-slate-100 space-y-2">
-                      {post.status === 'CLAIMED' && (
+                      {/* For single claimant without claims array */}
+                      {post.status === 'CLAIMED' && (!post.claims || post.claims.length === 0) && (
                         <div>
                           {isVerifying ? (
                             <div className="space-y-2 bg-slate-50 p-3 rounded-xl border border-slate-200">
@@ -450,11 +612,12 @@ export const CollegeDashboard: React.FC<CollegeDashboardProps> = ({
                         </div>
                       )}
 
-                      {post.status === 'AVAILABLE' && (
+                      {/* Cancel button for AVAILABLE posts or posts with remaining portions */}
+                      {(post.status === 'AVAILABLE' || (post.claims && post.claims.length > 0 && post.status !== 'COLLECTED')) && (
                         <div className="flex items-center gap-2">
                           <button
                             onClick={() => setCancelModalPost(post)}
-                            className="w-full py-2 px-3 rounded-xl border border-rose-200 text-rose-700 hover:bg-rose-50 text-xs font-bold transition-colors flex items-center justify-center gap-1.5"
+                            className="w-full py-2 px-3 rounded-xl border border-rose-200 text-rose-700 hover:bg-rose-50 text-xs font-bold transition-colors flex items-center justify-center gap-1.5 cursor-pointer"
                           >
                             <XCircle className="w-4 h-4" />
                             <span>Cancel Food Post</span>

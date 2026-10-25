@@ -142,7 +142,7 @@ export default function App() {
   }, [currentUser]);
 
   // 4. Claim Food Handler (Atomic Concurrency-Guarded Backend Call)
-  const handleClaim = async (post: FoodPost) => {
+  const handleClaim = async (post: FoodPost, portions: number = 1) => {
     if (!currentUser) {
       alert('Please log in or select a demo user profile first');
       return;
@@ -157,7 +157,7 @@ export default function App() {
         id: currentUser.id,
         name: currentUser.name,
         phone: currentUser.phone,
-      });
+      }, portions);
 
       // Update state locally immediately (in addition to SSE broadcast)
       setFoodPosts((prev) =>
@@ -165,7 +165,7 @@ export default function App() {
       );
       setSelectedFoodDetails(response.foodPost);
       setClaimSuccessData({
-        claimCode: response.foodPost.claimCode || 'FL-VERIFIED',
+        claimCode: response.claim?.claimCode || response.foodPost.claimCode || 'FL-VERIFIED',
         message: response.message,
       });
 
@@ -215,8 +215,8 @@ export default function App() {
     api.getStats().then(setStats).catch(() => {});
   };
 
-  const handleMarkCollected = async (postId: string, verifiedCode?: string) => {
-    await api.markCollected(postId, verifiedCode);
+  const handleMarkCollected = async (postId: string, verifiedCode?: string, claimId?: string) => {
+    await api.markCollected(postId, verifiedCode, claimId);
     const updated = await api.getFoodPosts();
     setFoodPosts(updated);
     api.getStats().then(setStats).catch(() => {});

@@ -36,6 +36,7 @@ export interface FoodPost {
   description: string;
   quantity: string;
   servingsCount: number;
+  remainingServings?: number;
   price: number;
   originalPrice?: number;
   imageUrl: string;
@@ -55,6 +56,10 @@ export interface FoodPost {
   dietaryTags: string[];
   temperature?: 'HOT' | 'COLD' | 'ROOM_TEMP';
   createdAt: string;
+  claims?: Claim[];
+  claimedPortions?: number;
+  totalClaimPrice?: number;
+  userClaim?: Claim;
 }
 
 export interface NotificationItem {
@@ -74,6 +79,8 @@ export interface Claim {
   userId: string;
   userName: string;
   userPhone: string;
+  portions?: number;
+  totalPrice?: number;
   status: 'CLAIMED' | 'COLLECTED' | 'CANCELLED';
   claimCode: string;
   claimedAt: string;
