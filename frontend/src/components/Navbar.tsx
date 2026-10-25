@@ -11,7 +11,8 @@ import {
   CheckCircle2, 
   ChevronDown,
   RefreshCw,
-  KeyRound
+  KeyRound,
+  ArrowRight
 } from 'lucide-react';
 import { User } from '../types';
 import { CAMPUS_OPTIONS } from '../utils/helpers';
@@ -31,6 +32,7 @@ interface NavbarProps {
   onOpenDocsModal?: () => void;
   onOpenPostFood: () => void;
   onOpenSetPassword?: () => void;
+  onNavigateToAuth?: () => void;
   isSseConnected: boolean;
   onResetDemo: () => void;
 }
@@ -50,6 +52,7 @@ export const Navbar: React.FC<NavbarProps> = ({
   onOpenDocsModal,
   onOpenPostFood,
   onOpenSetPassword,
+  onNavigateToAuth,
   isSseConnected,
   onResetDemo,
 }) => {
@@ -280,10 +283,24 @@ export const Navbar: React.FC<NavbarProps> = ({
                 </div>
               ) : (
                 <button
-                  onClick={onLogout}
-                  className="px-3.5 py-1.5 rounded-lg bg-emerald-600 text-white text-xs font-bold hover:bg-emerald-700 shadow-xs"
+                  type="button"
+                  onClick={() => {
+                    if (onNavigateToAuth) {
+                      onNavigateToAuth();
+                    } else {
+                      const el = document.getElementById('auth-section');
+                      if (el) {
+                        el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                        el.classList.add('ring-4', 'ring-emerald-400/50');
+                        setTimeout(() => el.classList.remove('ring-4', 'ring-emerald-400/50'), 2000);
+                        el.querySelector<HTMLInputElement>('input[type="email"]')?.focus();
+                      }
+                    }
+                  }}
+                  className="px-3.5 py-1.5 rounded-lg bg-emerald-600 text-white text-xs font-bold hover:bg-emerald-700 shadow-xs cursor-pointer active:scale-95 transition-all flex items-center gap-1.5"
                 >
-                  Log In / Register
+                  <span>Log In / Register</span>
+                  <ArrowRight className="w-3.5 h-3.5" />
                 </button>
               )}
             </div>

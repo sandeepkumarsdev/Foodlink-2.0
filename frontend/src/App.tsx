@@ -288,6 +288,27 @@ export default function App() {
     setNotifications((prev) => prev.map((n) => ({ ...n, read: true })));
   };
 
+  const handleScrollToAuth = useCallback((mode?: 'LOGIN' | 'REGISTER') => {
+    if (currentUser) {
+      setCurrentUser(null);
+    }
+    if (mode) {
+      window.dispatchEvent(new CustomEvent('foodlink:set-auth-mode', { detail: mode }));
+    }
+    setTimeout(() => {
+      const el = document.getElementById('auth-section');
+      if (el) {
+        el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        el.classList.add('ring-4', 'ring-emerald-400/50');
+        setTimeout(() => el.classList.remove('ring-4', 'ring-emerald-400/50'), 2000);
+        const emailInput = el.querySelector<HTMLInputElement>('input[type="email"]');
+        if (emailInput) {
+          emailInput.focus();
+        }
+      }
+    }, 60);
+  }, [currentUser]);
+
   const unreadCount = notifications.filter((n) => !n.read).length;
 
   return (
@@ -316,6 +337,7 @@ export default function App() {
         onOpenDocsModal={() => setShowDocsModal(true)}
         onOpenPostFood={() => setShowPostFoodModal(true)}
         onOpenSetPassword={() => setShowSetPasswordModal(true)}
+        onNavigateToAuth={() => handleScrollToAuth()}
         isSseConnected={isSseConnected}
         onResetDemo={async () => {
           await api.resetDemo();

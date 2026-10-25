@@ -102,6 +102,16 @@ export const LandingPage: React.FC<LandingPageProps> = ({
   const [gisRendered, setGisRendered] = useState(false);
   const [isGoogleAuthenticating, setIsGoogleAuthenticating] = useState(false);
 
+  useEffect(() => {
+    const handleSetAuthMode = (e: any) => {
+      if (e.detail === 'LOGIN' || e.detail === 'REGISTER') {
+        setAuthMode(e.detail);
+      }
+    };
+    window.addEventListener('foodlink:set-auth-mode', handleSetAuthMode);
+    return () => window.removeEventListener('foodlink:set-auth-mode', handleSetAuthMode);
+  }, []);
+
   const googleClientId = 
     import.meta.env.VITE_GOOGLE_CLIENT_ID || 
     '180715761304-s92fq8914t04pf7kjsg64bagsadnmdru.apps.googleusercontent.com';
@@ -504,12 +514,43 @@ export const LandingPage: React.FC<LandingPageProps> = ({
               </div>
             </div>
 
-
+            {/* Hero Quick Action CTAs */}
+            <div className="pt-2 flex flex-wrap items-center gap-3">
+              <button
+                type="button"
+                onClick={() => {
+                  setAuthMode('REGISTER');
+                  const el = document.getElementById('auth-section');
+                  el?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                  el?.classList.add('ring-4', 'ring-emerald-400/50');
+                  setTimeout(() => el?.classList.remove('ring-4', 'ring-emerald-400/50'), 2000);
+                  el?.querySelector<HTMLInputElement>('input[type="email"]')?.focus();
+                }}
+                className="px-5 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs shadow-md transition-all active:scale-95 flex items-center gap-2 cursor-pointer"
+              >
+                <span>Create Campus Account</span>
+                <ArrowRight className="w-4 h-4" />
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setAuthMode('LOGIN');
+                  const el = document.getElementById('auth-section');
+                  el?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                  el?.classList.add('ring-4', 'ring-emerald-400/50');
+                  setTimeout(() => el?.classList.remove('ring-4', 'ring-emerald-400/50'), 2000);
+                  el?.querySelector<HTMLInputElement>('input[type="email"]')?.focus();
+                }}
+                className="px-5 py-2.5 rounded-xl bg-white hover:bg-slate-50 text-slate-700 font-bold text-xs border border-slate-200 shadow-2xs transition-all active:scale-95 flex items-center gap-2 cursor-pointer"
+              >
+                <span>Log In</span>
+              </button>
+            </div>
           </div>
 
           {/* Right Column: Interactive Login / Register Form */}
           <div className="lg:col-span-5">
-            <div className="bg-white rounded-3xl p-6 sm:p-8 border border-slate-200 shadow-xl space-y-6 relative overflow-hidden">
+            <div id="auth-section" className="bg-white rounded-3xl p-6 sm:p-8 border border-slate-200 shadow-xl space-y-6 relative overflow-hidden transition-all duration-300 scroll-mt-24">
               <div className="absolute top-0 right-0 w-32 h-32 bg-emerald-500/5 rounded-bl-full pointer-events-none" />
 
               {/* Form Mode Selector: Login vs Register */}
