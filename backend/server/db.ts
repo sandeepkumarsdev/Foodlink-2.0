@@ -64,7 +64,7 @@ if (connectionString) {
       try {
         await pgliteInstance.exec(`
           CREATE TABLE IF NOT EXISTS users (id TEXT PRIMARY KEY, name TEXT NOT NULL, email TEXT UNIQUE NOT NULL, password_hash TEXT, phone TEXT, user_type TEXT NOT NULL CHECK (user_type IN ('USER', 'COLLEGE', 'ADMIN')), college TEXT NOT NULL, canteen_name TEXT, is_verified BOOLEAN DEFAULT FALSE, avatar_url TEXT, created_at TIMESTAMPTZ DEFAULT NOW());
-          CREATE TABLE IF NOT EXISTS food_posts (id TEXT PRIMARY KEY, college_id TEXT NOT NULL, canteen_id TEXT NOT NULL, college_name TEXT NOT NULL, canteen_name TEXT NOT NULL, food_name TEXT NOT NULL, description TEXT NOT NULL, quantity TEXT NOT NULL, servings_count INTEGER DEFAULT 10, image_url TEXT NOT NULL, available_from TIMESTAMPTZ NOT NULL, collection_deadline TIMESTAMPTZ NOT NULL, location TEXT NOT NULL, status TEXT NOT NULL CHECK (status IN ('AVAILABLE', 'CLAIMED', 'COLLECTED', 'EXPIRED', 'CANCELLED')), claimed_by TEXT REFERENCES users(id), claimant_name TEXT, claimant_phone TEXT, claim_code TEXT, claimed_at TIMESTAMPTZ, collected_at TIMESTAMPTZ, cancelled_at TIMESTAMPTZ, cancellation_reason TEXT, food_safety_info TEXT NOT NULL, dietary_tags JSONB DEFAULT '[]'::jsonb, temperature TEXT CHECK (temperature IN ('HOT', 'COLD', 'ROOM_TEMP')), created_at TIMESTAMPTZ DEFAULT NOW());
+          CREATE TABLE IF NOT EXISTS food_posts (id TEXT PRIMARY KEY, college_id TEXT NOT NULL, canteen_id TEXT NOT NULL, college_name TEXT NOT NULL, canteen_name TEXT NOT NULL, food_name TEXT NOT NULL, description TEXT NOT NULL, quantity TEXT NOT NULL, servings_count INTEGER DEFAULT 10, price NUMERIC(10,2) DEFAULT 0, original_price NUMERIC(10,2), image_url TEXT NOT NULL, available_from TIMESTAMPTZ NOT NULL, collection_deadline TIMESTAMPTZ NOT NULL, location TEXT NOT NULL, status TEXT NOT NULL CHECK (status IN ('AVAILABLE', 'CLAIMED', 'COLLECTED', 'EXPIRED', 'CANCELLED')), claimed_by TEXT REFERENCES users(id), claimant_name TEXT, claimant_phone TEXT, claim_code TEXT, claimed_at TIMESTAMPTZ, collected_at TIMESTAMPTZ, cancelled_at TIMESTAMPTZ, cancellation_reason TEXT, food_safety_info TEXT NOT NULL, dietary_tags JSONB DEFAULT '[]'::jsonb, temperature TEXT CHECK (temperature IN ('HOT', 'COLD', 'ROOM_TEMP')), created_at TIMESTAMPTZ DEFAULT NOW());
           CREATE TABLE IF NOT EXISTS claims (id TEXT PRIMARY KEY, food_post_id TEXT NOT NULL REFERENCES food_posts(id) ON DELETE CASCADE, user_id TEXT NOT NULL REFERENCES users(id), user_name TEXT NOT NULL, user_phone TEXT, status TEXT NOT NULL CHECK (status IN ('CLAIMED', 'COLLECTED', 'CANCELLED')), claim_code TEXT NOT NULL, claimed_at TIMESTAMPTZ DEFAULT NOW(), collected_at TIMESTAMPTZ);
           CREATE TABLE IF NOT EXISTS notifications (id TEXT PRIMARY KEY, user_id TEXT NOT NULL REFERENCES users(id), food_post_id TEXT REFERENCES food_posts(id) ON DELETE SET NULL, title TEXT NOT NULL, message TEXT NOT NULL, type TEXT NOT NULL, read BOOLEAN DEFAULT FALSE, created_at TIMESTAMPTZ DEFAULT NOW());
           CREATE TABLE IF NOT EXISTS email_verifications (id TEXT PRIMARY KEY, email TEXT NOT NULL, code TEXT NOT NULL, expires_at TIMESTAMPTZ NOT NULL, verified BOOLEAN DEFAULT FALSE, created_at TIMESTAMPTZ DEFAULT NOW());
@@ -159,6 +159,8 @@ export async function initPostgres() {
       description TEXT NOT NULL,
       quantity TEXT NOT NULL,
       servings_count INTEGER DEFAULT 10,
+      price NUMERIC(10,2) DEFAULT 0,
+      original_price NUMERIC(10,2),
       image_url TEXT NOT NULL,
       available_from TIMESTAMPTZ NOT NULL,
       collection_deadline TIMESTAMPTZ NOT NULL,
@@ -220,6 +222,17 @@ export async function initPostgres() {
     -- Ensure password_hash column exists on existing deployed databases
     ALTER TABLE users ADD COLUMN IF NOT EXISTS password_hash TEXT;
 
+    -- Ensure price & original_price columns exist on food_posts
+    ALTER TABLE food_posts ADD COLUMN IF NOT EXISTS price NUMERIC(10,2) DEFAULT 0;
+    ALTER TABLE food_posts ADD COLUMN IF NOT EXISTS original_price NUMERIC(10,2);
+
+    -- Set demo prices for existing seeded posts if not set
+    UPDATE food_posts SET price = 20.00, original_price = 60.00 WHERE id = 'post_lemon_rice' AND (price IS NULL OR price = 0);
+    UPDATE food_posts SET price = 25.00, original_price = 75.00 WHERE id = 'post_artisan_sandwiches' AND (price IS NULL OR price = 0);
+    UPDATE food_posts SET price = 30.00, original_price = 85.00 WHERE id = 'post_pasta_primavera' AND (price IS NULL OR price = 0);
+    UPDATE food_posts SET price = 40.00, original_price = 120.00 WHERE id = 'post_roast_chicken' AND (price IS NULL OR price = 0);
+    UPDATE food_posts SET price = 15.00, original_price = 45.00 WHERE id = 'post_fruit_pastries' AND (price IS NULL OR price = 0);
+
     -- Attach default password (Password123!) to demo accounts if not set
     UPDATE users SET password_hash = 'd658306858b7c961c0b0c5260cf6c255:4b36d650b0a30499ab4e8d8e29d82a51cefecce1476243f0b5f38e4f0cbd47cdbcf83ecac5897d95149ba506a597e95483f4c07ce7c168eab536583746ed4b16'
     WHERE password_hash IS NULL AND email IN ('alex.student@campus.edu', 'sarah.c@campus.edu', 'chef.marco@campus.edu', 'priya.catering@campus.edu', 'admin@foodlink.edu');
@@ -277,19 +290,19 @@ export async function seedPostgresData() {
   await pg.query(`
     INSERT INTO food_posts (
       id, college_id, canteen_id, college_name, canteen_name, food_name, description, quantity, servings_count,
-      image_url, available_from, collection_deadline, location, status, food_safety_info, dietary_tags, temperature,
+      price, original_price, image_url, available_from, collection_deadline, location, status, food_safety_info, dietary_tags, temperature,
       claimed_by, claimant_name, claimant_phone, claim_code, claimed_at, collected_at, created_at
     ) VALUES 
-    ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24),
-    ($25, $26, $27, $28, $29, $30, $31, $32, $33, $34, $35, $36, $37, $38, $39, $40, $41, $42, $43, $44, $45, $46, $47, $48),
-    ($49, $50, $51, $52, $53, $54, $55, $56, $57, $58, $59, $60, $61, $62, $63, $64, $65, $66, $67, $68, $69, $70, $71, $72),
-    ($73, $74, $75, $76, $77, $78, $79, $80, $81, $82, $83, $84, $85, $86, $87, $88, $89, $90, $91, $92, $93, $94, $95, $96),
-    ($97, $98, $99, $100, $101, $102, $103, $104, $105, $106, $107, $108, $109, $110, $111, $112, $113, $114, $115, $116, $117, $118, $119, $120)
+    ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24, $25, $26),
+    ($27, $28, $29, $30, $31, $32, $33, $34, $35, $36, $37, $38, $39, $40, $41, $42, $43, $44, $45, $46, $47, $48, $49, $50, $51, $52),
+    ($53, $54, $55, $56, $57, $58, $59, $60, $61, $62, $63, $64, $65, $66, $67, $68, $69, $70, $71, $72, $73, $74, $75, $76, $77, $78),
+    ($79, $80, $81, $82, $83, $84, $85, $86, $87, $88, $89, $90, $91, $92, $93, $94, $95, $96, $97, $98, $99, $100, $101, $102, $103, $104),
+    ($105, $106, $107, $108, $109, $110, $111, $112, $113, $114, $115, $116, $117, $118, $119, $120, $121, $122, $123, $124, $125, $126, $127, $128, $129, $130)
   `, [
     // 1. Lemon Rice (AVAILABLE)
     'post_lemon_rice', 'col_stanford', 'cant_tresidder', 'Stanford Central Campus', 'Tresidder Student Dining Hall',
     'Fragrant Lemon Herb Rice & Dal', 'Freshly prepared South Asian style lemon rice with mustard seeds, roasted cashews, and rich yellow lentil tadka. Packaged in sanitized hot-food takeout containers from lunch service.',
-    '20 portions', 20, 'https://images.unsplash.com/photo-1610057099443-fde8c4d50f91?auto=format&fit=crop&w=800&q=80',
+    '20 portions', 20, 20.00, 60.00, 'https://images.unsplash.com/photo-1610057099443-fde8c4d50f91?auto=format&fit=crop&w=800&q=80',
     new Date(now.getTime() - 15 * 60 * 1000).toISOString(), inTwoHours,
     'Tresidder Memorial Union, 2nd Floor Dining Counter #3 (Ask for Chef Marco)', 'AVAILABLE',
     'Prepared at 11:30 AM today in our certified commercial kitchen. Kept in warm holding at 65°C. Safe to consume within 3 hours or refrigerate immediately.',
@@ -299,7 +312,7 @@ export async function seedPostgresData() {
     // 2. Sandwiches (AVAILABLE)
     'post_artisan_sandwiches', 'col_stanford', 'cant_tresidder', 'Stanford Central Campus', 'Tresidder Student Dining Hall',
     'Gourmet Baguette Sandwiches & Salad Box', 'Assortment of freshly assembled sandwiches from today\'s academic conference catering: Roasted Mediterranean Veggie & Pesto, Smoked Turkey Breast with Swiss, and Caprese Ciabatta.',
-    '15 meal boxes', 15, 'https://images.unsplash.com/photo-1550547660-d9450f859349?auto=format&fit=crop&w=800&q=80',
+    '15 meal boxes', 15, 25.00, 75.00, 'https://images.unsplash.com/photo-1550547660-d9450f859349?auto=format&fit=crop&w=800&q=80',
     new Date(now.getTime() - 30 * 60 * 1000).toISOString(), inThreeHours,
     'Faculty Club Catering Dispatch, Ground Floor Service Bay', 'AVAILABLE',
     'Sealed individually in compostable boxes with ice-pack chilled transport. Consume by tonight.',
@@ -309,7 +322,7 @@ export async function seedPostgresData() {
     // 3. Pasta Primavera (AVAILABLE)
     'post_pasta_primavera', 'col_berkeley', 'cant_crossroads', 'UC Berkeley Campus', 'Crossroads Dining Commons',
     'Penne Pasta Primavera with Garlic Focaccia', 'Penne tossed with sautéed zucchini, cherry tomatoes, baby spinach, basil pesto, and parmesan. Served with warm garlic herb bread.',
-    '25 servings', 25, 'https://images.unsplash.com/photo-1621996346565-e3d5d6281691?auto=format&fit=crop&w=800&q=80',
+    '25 servings', 25, 30.00, 85.00, 'https://images.unsplash.com/photo-1621996346565-e3d5d6281691?auto=format&fit=crop&w=800&q=80',
     new Date(now.getTime() - 10 * 60 * 1000).toISOString(), inFiveHours,
     'Crossroads Main Hall, North Pickup Station by the green recycle banner', 'AVAILABLE',
     'Fresh from lunchtime hotline at 12:00 PM. Kept under commercial heating.',
@@ -319,7 +332,7 @@ export async function seedPostgresData() {
     // 4. Roast Chicken (CLAIMED by Alex)
     'post_roast_chicken', 'col_stanford', 'cant_tresidder', 'Stanford Central Campus', 'Tresidder Student Dining Hall',
     'Rosemary Garlic Roasted Chicken & Wedges', 'Tender chicken quarters slow-roasted with fresh rosemary, whole garlic cloves, served with golden potato wedges and steamed green beans.',
-    '18 portions', 18, 'https://images.unsplash.com/photo-1598515214211-89d3c73ae83b?auto=format&fit=crop&w=800&q=80',
+    '18 portions', 18, 40.00, 120.00, 'https://images.unsplash.com/photo-1598515214211-89d3c73ae83b?auto=format&fit=crop&w=800&q=80',
     new Date(now.getTime() - 40 * 60 * 1000).toISOString(), inSixHours,
     'Tresidder Kitchen Back Entrance, Loading Gate 2', 'CLAIMED',
     'Fully cooked to internal temp 78°C. Securely packed in insulated thermal bags ready for student pickup.',
@@ -329,7 +342,7 @@ export async function seedPostgresData() {
     // 5. Pastries (COLLECTED by Sarah)
     'post_fruit_pastries', 'col_berkeley', 'cant_crossroads', 'UC Berkeley Campus', 'Crossroads Dining Commons',
     'Morning Bakery Pastries & Fresh Fruit Bowls', 'Assorted croissants, blueberry muffins, cinnamon scrolls, and individual melon-berry fruit cups left over from breakfast seminar.',
-    '30 items', 30, 'https://images.unsplash.com/photo-1509440159596-0249088772ff?auto=format&fit=crop&w=800&q=80',
+    '30 items', 30, 15.00, 45.00, 'https://images.unsplash.com/photo-1509440159596-0249088772ff?auto=format&fit=crop&w=800&q=80',
     new Date(now.getTime() - 3 * 60 * 60 * 1000).toISOString(), pastOneHour,
     'Crossroads Cafe Counter', 'COLLECTED',
     'Baked this morning at 6:00 AM. Stored at clean ambient temperature.',
@@ -411,6 +424,8 @@ export function mapRowToFoodPost(r: any): FoodPost {
     description: r.description,
     quantity: r.quantity,
     servingsCount: r.servings_count || 10,
+    price: r.price !== undefined && r.price !== null ? parseFloat(r.price) : 0,
+    originalPrice: r.original_price !== undefined && r.original_price !== null ? parseFloat(r.original_price) : undefined,
     imageUrl: r.image_url,
     availableFrom: new Date(r.available_from).toISOString(),
     collectionDeadline: new Date(r.collection_deadline).toISOString(),

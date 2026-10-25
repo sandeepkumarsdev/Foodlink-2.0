@@ -11,12 +11,12 @@ ON CONFLICT (id) DO NOTHING;
 -- Seed Initial Food Posts
 INSERT INTO public.food_posts (
   id, college_id, canteen_id, college_name, canteen_name, food_name, description, quantity, servings_count,
-  image_url, available_from, collection_deadline, location, status, food_safety_info, dietary_tags, temperature,
+  price, original_price, image_url, available_from, collection_deadline, location, status, food_safety_info, dietary_tags, temperature,
   claimed_by, claimant_name, claimant_phone, claim_code, claimed_at, collected_at, created_at
 ) VALUES 
 ('post_lemon_rice', 'col_stanford', 'cant_tresidder', 'Stanford Central Campus', 'Tresidder Student Dining Hall',
 'Fragrant Lemon Herb Rice & Dal', 'Freshly prepared South Asian style lemon rice with mustard seeds, roasted cashews, and rich yellow lentil tadka. Packaged in sanitized hot-food takeout containers from lunch service.',
-'20 portions', 20, 'https://images.unsplash.com/photo-1610057099443-fde8c4d50f91?auto=format&fit=crop&w=800&q=80',
+'20 portions', 20, 20.00, 60.00, 'https://images.unsplash.com/photo-1610057099443-fde8c4d50f91?auto=format&fit=crop&w=800&q=80',
 NOW(), NOW() + INTERVAL '2 hours',
 'Tresidder Memorial Union, 2nd Floor Dining Counter #3 (Ask for Chef Marco)', 'AVAILABLE',
 'Prepared at 11:30 AM today in our certified commercial kitchen. Kept in warm holding at 65°C. Safe to consume within 3 hours or refrigerate immediately.',
@@ -24,7 +24,7 @@ NOW(), NOW() + INTERVAL '2 hours',
 null, null, null, null, null, null, NOW()),
 ('post_artisan_sandwiches', 'col_stanford', 'cant_tresidder', 'Stanford Central Campus', 'Tresidder Student Dining Hall',
 'Gourmet Baguette Sandwiches & Salad Box', 'Assortment of freshly assembled sandwiches from today''s academic conference catering: Roasted Mediterranean Veggie & Pesto, Smoked Turkey Breast with Swiss, and Caprese Ciabatta.',
-'15 meal boxes', 15, 'https://images.unsplash.com/photo-1550547660-d9450f859349?auto=format&fit=crop&w=800&q=80',
+'15 meal boxes', 15, 25.00, 75.00, 'https://images.unsplash.com/photo-1550547660-d9450f859349?auto=format&fit=crop&w=800&q=80',
 NOW(), NOW() + INTERVAL '3.5 hours',
 'Faculty Club Catering Dispatch, Ground Floor Service Bay', 'AVAILABLE',
 'Sealed individually in compostable boxes with ice-pack chilled transport. Consume by tonight.',

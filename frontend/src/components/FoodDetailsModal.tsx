@@ -14,11 +14,12 @@ import {
   QrCode,
   RotateCcw,
   Sparkles,
-  HeartHandshake
+  HeartHandshake,
+  Tag
 } from 'lucide-react';
 import confetti from 'canvas-confetti';
 import { FoodPost, User } from '../types';
-import { formatTimeRemaining, formatDateTime } from '../utils/helpers';
+import { formatTimeRemaining, formatDateTime, formatFoodPrice } from '../utils/helpers';
 
 interface FoodDetailsModalProps {
   post: FoodPost | null;
@@ -47,6 +48,7 @@ export const FoodDetailsModal: React.FC<FoodDetailsModalProps> = ({
   if (!post) return null;
 
   const timeInfo = formatTimeRemaining(post.collectionDeadline);
+  const priceInfo = formatFoodPrice(post.price, post.originalPrice);
   const isClaimedByMe = currentUser && post.claimedBy === currentUser.id;
 
   const handleConfirmClaim = async () => {
@@ -102,9 +104,16 @@ export const FoodDetailsModal: React.FC<FoodDetailsModalProps> = ({
           {/* Badges on Image */}
           <div className="absolute bottom-4 left-4 right-4 flex flex-wrap items-end justify-between gap-2">
             <div>
-              <span className="inline-block px-3 py-1 rounded-full text-xs font-bold uppercase tracking-wider bg-emerald-500 text-white shadow-md mb-2">
-                {post.quantity} Available
-              </span>
+              <div className="flex flex-wrap items-center gap-2 mb-2">
+                <span className="inline-block px-3 py-1 rounded-full text-xs font-bold uppercase tracking-wider bg-emerald-500 text-white shadow-md">
+                  {post.quantity} Available
+                </span>
+                <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-black bg-amber-400 text-slate-950 shadow-md">
+                  <Tag className="w-3.5 h-3.5" />
+                  <span>{priceInfo.priceFormatted}</span>
+                  {priceInfo.discountPercent ? ` · ${priceInfo.discountPercent}% OFF` : ''}
+                </span>
+              </div>
               <h2 className="text-xl sm:text-2xl font-black text-white leading-tight drop-shadow-xs">
                 {post.foodName}
               </h2>
@@ -140,6 +149,39 @@ export const FoodDetailsModal: React.FC<FoodDetailsModalProps> = ({
             </span>
           </div>
 
+          {/* Affordable Surplus Meal Pricing Card */}
+          <div className="p-4 bg-gradient-to-r from-amber-50 via-emerald-50/60 to-teal-50/60 rounded-2xl border border-amber-200/80 flex items-center justify-between">
+            <div>
+              <span className="text-[11px] font-bold uppercase tracking-wider text-amber-800 block">
+                Campus Surplus Price
+              </span>
+              <div className="flex items-baseline gap-2 mt-0.5">
+                <span className="text-2xl font-black text-slate-900">{priceInfo.priceFormatted}</span>
+                {priceInfo.originalPriceFormatted && (
+                  <span className="text-sm line-through text-slate-400 font-semibold">
+                    {priceInfo.originalPriceFormatted}
+                  </span>
+                )}
+                {priceInfo.discountPercent ? (
+                  <span className="text-xs font-black px-2 py-0.5 rounded-full bg-emerald-600 text-white">
+                    Save {priceInfo.discountPercent}%
+                  </span>
+                ) : null}
+              </div>
+              <p className="text-[11px] text-slate-500 mt-1">
+                {post.price && post.price > 0 
+                  ? 'Pay at the canteen counter when presenting your claim voucher code.' 
+                  : 'Complimentary / 100% Free Campus Surplus Meal.'}
+              </p>
+            </div>
+            <div className="text-right shrink-0">
+              <span className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-white border border-amber-200 shadow-xs text-xs font-black text-amber-900">
+                <Tag className="w-3.5 h-3.5 text-amber-600" />
+                {post.price && post.price > 0 ? 'Budget Meal' : 'Free Food'}
+              </span>
+            </div>
+          </div>
+
           {/* Claim Success State / Pickup Ticket */}
           {(isClaimedByMe || claimSuccessData) && (
             <div className="p-5 bg-gradient-to-br from-emerald-600 to-teal-700 rounded-2xl text-white shadow-lg space-y-3">
@@ -159,6 +201,9 @@ export const FoodDetailsModal: React.FC<FoodDetailsModalProps> = ({
                   <p className="text-3xl font-mono font-black tracking-widest text-amber-200">
                     {post.claimCode || claimSuccessData?.claimCode || 'FL-READY'}
                   </p>
+                  <div className="mt-1 text-xs font-bold text-emerald-100">
+                    Amount Due at Counter: <span className="text-amber-300 font-black text-sm">{priceInfo.priceFormatted}</span>
+                  </div>
                 </div>
                 <div className="w-14 h-14 bg-white rounded-lg p-1.5 flex items-center justify-center text-slate-900">
                   <QrCode className="w-10 h-10" />
@@ -167,7 +212,7 @@ export const FoodDetailsModal: React.FC<FoodDetailsModalProps> = ({
 
               <p className="text-xs text-emerald-100 leading-relaxed">
                 Head to <strong>{post.location}</strong> before{' '}
-                <strong>{formatDateTime(post.collectionDeadline)}</strong>. Show this code to canteen staff.
+                <strong>{formatDateTime(post.collectionDeadline)}</strong>. Show this code to canteen staff and pay <strong>{priceInfo.priceFormatted}</strong> on collection.
               </p>
 
               <div className="pt-2 flex items-center justify-between border-t border-white/15">
@@ -291,7 +336,7 @@ export const FoodDetailsModal: React.FC<FoodDetailsModalProps> = ({
               className="flex-1 sm:flex-initial px-6 py-2.5 rounded-xl font-bold text-sm bg-emerald-600 hover:bg-emerald-700 text-white shadow-md hover:shadow-emerald-500/20 transition-all flex items-center justify-center gap-2 active:scale-98 disabled:opacity-50 cursor-pointer"
             >
               <HeartHandshake className="w-4 h-4" />
-              <span>{isClaiming ? 'Verifying Availability...' : 'I\'m Interested / Claim Food'}</span>
+              <span>{isClaiming ? 'Verifying Availability...' : `Claim Meal · ${priceInfo.priceFormatted}`}</span>
             </button>
           ) : isClaimedByMe ? (
             <span className="text-xs font-bold text-emerald-700 flex items-center gap-1.5">
@@ -327,9 +372,13 @@ export const FoodDetailsModal: React.FC<FoodDetailsModalProps> = ({
               </p>
             </div>
 
-            <div className="bg-slate-50 p-3.5 rounded-xl border border-slate-200 text-xs text-slate-700 space-y-1">
+            <div className="bg-slate-50 p-3.5 rounded-xl border border-slate-200 text-xs text-slate-700 space-y-1.5">
               <div>
                 <strong>Item:</strong> {post.foodName} ({post.quantity})
+              </div>
+              <div className="flex items-center justify-between text-emerald-900 font-bold bg-emerald-50/80 p-2 rounded-lg border border-emerald-200">
+                <span>Price to Pay at Canteen:</span>
+                <span className="text-sm font-black text-emerald-700">{priceInfo.priceFormatted}</span>
               </div>
               <div>
                 <strong>Location:</strong> {post.location}
@@ -350,7 +399,7 @@ export const FoodDetailsModal: React.FC<FoodDetailsModalProps> = ({
                 onClick={handleConfirmClaim}
                 className="flex-1 py-2.5 px-4 rounded-xl font-bold text-sm bg-emerald-600 hover:bg-emerald-700 text-white shadow-md transition-all active:scale-98"
               >
-                Yes, I Will Collect
+                Yes, Claim · {priceInfo.priceFormatted}
               </button>
             </div>
           </div>

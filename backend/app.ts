@@ -571,6 +571,8 @@ app.post('/api/food-posts', async (req: Request, res: Response) => {
     userId,
     collegeName,
     canteenName,
+    price,
+    originalPrice,
   } = req.body;
 
   if (!foodName || !description || !quantity || !collectionDeadline || !location) {
@@ -590,17 +592,19 @@ app.post('/api/food-posts', async (req: Request, res: Response) => {
     const colId = 'col_' + crypto.randomUUID().slice(0, 6);
     const cantId = 'cant_' + crypto.randomUUID().slice(0, 6);
     const parsedServings = parseInt(servingsCount, 10) || 10;
+    const parsedPrice = price !== undefined && price !== null && price !== '' ? Math.max(0, parseFloat(price)) : 0;
+    const parsedOriginalPrice = originalPrice !== undefined && originalPrice !== null && originalPrice !== '' ? Math.max(0, parseFloat(originalPrice)) : null;
     const finalImage = imageUrl || 'https://images.unsplash.com/photo-1546069901-ba9599a7e63c?auto=format&fit=crop&w=800&q=80';
     const finalAvail = availableFrom || new Date().toISOString();
-    const finalSafety = foodSafetyInfo || 'Prepared fresh today. Keep refrigerated or consume within 2 hours.';
+    const finalSafety = foodSafetyInfo || 'Prepared fresh today. Kept refrigerated or consume within 2 hours.';
     const finalTags = Array.isArray(dietaryTags) ? dietaryTags : ['Vegetarian'];
     const finalTemp = temperature || 'HOT';
 
     const insertRes = await query(
       `INSERT INTO food_posts (
         id, college_id, canteen_id, college_name, canteen_name, food_name, description, quantity, servings_count,
-        image_url, available_from, collection_deadline, location, status, food_safety_info, dietary_tags, temperature, created_at
-      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, 'AVAILABLE', $14, $15, $16, NOW())
+        price, original_price, image_url, available_from, collection_deadline, location, status, food_safety_info, dietary_tags, temperature, created_at
+      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, 'AVAILABLE', $16, $17, $18, NOW())
       RETURNING *`,
       [
         newId,
@@ -612,6 +616,8 @@ app.post('/api/food-posts', async (req: Request, res: Response) => {
         description,
         quantity,
         parsedServings,
+        parsedPrice,
+        parsedOriginalPrice,
         finalImage,
         finalAvail,
         collectionDeadline,

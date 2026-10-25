@@ -13,7 +13,7 @@ import {
   Sparkles
 } from 'lucide-react';
 import { FoodPost, User } from '../types';
-import { formatTimeRemaining, formatDateTime } from '../utils/helpers';
+import { formatTimeRemaining, formatDateTime, formatFoodPrice } from '../utils/helpers';
 
 interface FoodCardProps {
   post: FoodPost;
@@ -29,6 +29,7 @@ export const FoodCard: React.FC<FoodCardProps> = ({
   onViewDetails,
 }) => {
   const timeInfo = formatTimeRemaining(post.collectionDeadline);
+  const priceInfo = formatFoodPrice(post.price, post.originalPrice);
   const isClaimedByMe = currentUser && post.claimedBy === currentUser.id;
 
   // Status styling configurations
@@ -90,12 +91,23 @@ export const FoodCard: React.FC<FoodCardProps> = ({
         />
         <div className="absolute inset-0 bg-gradient-to-t from-black/60 via-transparent to-black/20" />
 
-        {/* Status Pill Badge */}
-        <div className="absolute top-3 left-3">
+        {/* Status Pill Badge & Price Pill */}
+        <div className="absolute top-3 left-3 flex flex-col gap-1.5 items-start">
           <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-bold border shadow-xs backdrop-blur-md ${statusConfig.badge}`}>
             <span className={`w-2 h-2 rounded-full ${statusConfig.dot} ${post.status === 'AVAILABLE' ? 'animate-pulse' : ''}`} />
             {isClaimedByMe ? 'YOUR CLAIM' : statusConfig.label}
           </span>
+          <div className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-lg bg-slate-950/80 text-white backdrop-blur-md shadow-xs border border-white/10">
+            <span className="text-xs font-black text-amber-300">{priceInfo.priceFormatted}</span>
+            {priceInfo.originalPriceFormatted && (
+              <span className="text-[10px] text-slate-400 line-through">{priceInfo.originalPriceFormatted}</span>
+            )}
+            {priceInfo.discountPercent && (
+              <span className="text-[9px] font-black bg-emerald-500 text-white px-1.5 py-0.2 rounded">
+                {priceInfo.discountPercent}% OFF
+              </span>
+            )}
+          </div>
         </div>
 
         {/* Temperature Badge */}
@@ -180,15 +192,30 @@ export const FoodCard: React.FC<FoodCardProps> = ({
           </div>
         </div>
 
-        {/* Action Button Area */}
-        <div className="pt-2 border-t border-slate-100">
+        {/* Action Button Area with Price */}
+        <div className="pt-2.5 border-t border-slate-100 space-y-2">
+          <div className="flex items-center justify-between text-xs">
+            <div className="flex items-baseline gap-1.5">
+              <span className="text-sm font-black text-slate-900">{priceInfo.priceFormatted}</span>
+              {priceInfo.originalPriceFormatted && (
+                <span className="text-[11px] text-slate-400 line-through font-medium">{priceInfo.originalPriceFormatted}</span>
+              )}
+              {priceInfo.discountPercent && (
+                <span className="text-[10px] font-bold text-emerald-700 bg-emerald-50 px-1.5 py-0.2 rounded border border-emerald-200">
+                  {priceInfo.discountPercent}% OFF
+                </span>
+              )}
+            </div>
+            <span className="text-[10px] text-slate-400 font-medium">Pay on collection</span>
+          </div>
+
           {post.status === 'AVAILABLE' ? (
             <div className="flex items-center gap-2">
               <button
                 onClick={() => onClaimClick(post)}
-                className="flex-1 py-2.5 px-4 rounded-xl font-bold text-sm bg-emerald-600 hover:bg-emerald-700 text-white shadow-sm hover:shadow-emerald-500/20 transition-all flex items-center justify-center gap-2 active:scale-98 cursor-pointer"
+                className="flex-1 py-2.5 px-3 rounded-xl font-bold text-xs sm:text-sm bg-emerald-600 hover:bg-emerald-700 text-white shadow-sm hover:shadow-emerald-500/20 transition-all flex items-center justify-center gap-1.5 active:scale-98 cursor-pointer"
               >
-                <span>Claim Food</span>
+                <span>Claim Meal · {priceInfo.priceFormatted}</span>
                 <ChevronRight className="w-4 h-4" />
               </button>
               <button

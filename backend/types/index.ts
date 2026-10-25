@@ -36,6 +36,8 @@ export interface FoodPost {
   description: string;
   quantity: string;
   servingsCount: number;
+  price: number;
+  originalPrice?: number;
   imageUrl: string;
   availableFrom: string;
   collectionDeadline: string;

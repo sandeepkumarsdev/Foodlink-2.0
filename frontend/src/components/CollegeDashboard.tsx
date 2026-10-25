@@ -16,10 +16,11 @@ import {
   Sparkles,
   Calendar,
   Layers,
-  Leaf
+  Leaf,
+  Tag
 } from 'lucide-react';
 import { FoodPost, User, DashboardStats } from '../types';
-import { formatTimeRemaining, formatDateTime } from '../utils/helpers';
+import { formatTimeRemaining, formatDateTime, formatFoodPrice } from '../utils/helpers';
 
 interface CollegeDashboardProps {
   currentUser: User;
@@ -285,6 +286,7 @@ export const CollegeDashboard: React.FC<CollegeDashboardProps> = ({
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
             {filteredPosts.map((post) => {
               const timeInfo = formatTimeRemaining(post.collectionDeadline);
+              const priceInfo = formatFoodPrice(post.price, post.originalPrice);
               const isVerifying = verifyingPostId === post.id;
 
               return (
@@ -321,6 +323,14 @@ export const CollegeDashboard: React.FC<CollegeDashboardProps> = ({
                       </span>
                     </div>
 
+                    {/* Price Tag Overlay */}
+                    <div className="absolute top-3 right-3">
+                      <span className="px-2.5 py-1 rounded-full text-[11px] font-black bg-amber-400 text-slate-950 shadow-xs flex items-center gap-1">
+                        <Tag className="w-3 h-3" />
+                        {priceInfo.priceFormatted}
+                      </span>
+                    </div>
+
                     <div className="absolute bottom-2.5 left-3 right-3 flex items-center justify-between text-white text-xs font-bold">
                       <span>{post.quantity}</span>
                       <span>{timeInfo.text}</span>
@@ -330,9 +340,14 @@ export const CollegeDashboard: React.FC<CollegeDashboardProps> = ({
                   {/* Body Content */}
                   <div className="p-4 sm:p-5 flex-1 flex flex-col justify-between space-y-3">
                     <div>
-                      <h3 className="font-bold text-base text-slate-900 line-clamp-1">
-                        {post.foodName}
-                      </h3>
+                      <div className="flex items-start justify-between gap-2">
+                        <h3 className="font-bold text-base text-slate-900 line-clamp-1">
+                          {post.foodName}
+                        </h3>
+                        <span className="text-xs font-black text-emerald-700 shrink-0">
+                          {priceInfo.priceFormatted}
+                        </span>
+                      </div>
                       <p className="text-xs text-slate-500 line-clamp-2 mt-1">
                         {post.description}
                       </p>
@@ -358,14 +373,21 @@ export const CollegeDashboard: React.FC<CollegeDashboardProps> = ({
                               <span>{post.claimantPhone}</span>
                             </div>
                           )}
+                          <div className="pt-1.5 mt-1 border-t border-amber-200/60 flex items-center justify-between text-xs font-bold text-amber-950">
+                            <span>Collect at Counter:</span>
+                            <span className="font-black text-emerald-800 text-sm">{priceInfo.priceFormatted}</span>
+                          </div>
                         </div>
                       )}
 
                       {/* Collected details */}
                       {post.status === 'COLLECTED' && (
-                        <div className="mt-3 p-2.5 rounded-xl bg-blue-50 border border-blue-100 text-xs text-blue-900 flex items-center gap-2">
-                          <CheckCircle className="w-4 h-4 text-blue-600 shrink-0" />
-                          <span>Handed over to {post.claimantName}</span>
+                        <div className="mt-3 p-2.5 rounded-xl bg-blue-50 border border-blue-100 text-xs text-blue-900 flex items-center justify-between">
+                          <div className="flex items-center gap-2">
+                            <CheckCircle className="w-4 h-4 text-blue-600 shrink-0" />
+                            <span>Handed over to {post.claimantName}</span>
+                          </div>
+                          <span className="font-black text-blue-950">{priceInfo.priceFormatted}</span>
                         </div>
                       )}
                     </div>
@@ -376,9 +398,14 @@ export const CollegeDashboard: React.FC<CollegeDashboardProps> = ({
                         <div>
                           {isVerifying ? (
                             <div className="space-y-2 bg-slate-50 p-3 rounded-xl border border-slate-200">
-                              <label className="text-[11px] font-bold text-slate-700 block">
-                                Enter Student's Pickup Code:
-                              </label>
+                              <div className="flex items-center justify-between">
+                                <label className="text-[11px] font-bold text-slate-700 block">
+                                  Enter Student's Pickup Code:
+                                </label>
+                                <span className="text-[11px] font-black text-emerald-700">
+                                  Collect: {priceInfo.priceFormatted}
+                                </span>
+                              </div>
                               <div className="flex items-center gap-2">
                                 <input
                                   type="text"

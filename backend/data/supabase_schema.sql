@@ -25,6 +25,8 @@ CREATE TABLE IF NOT EXISTS public.food_posts (
   description TEXT NOT NULL,
   quantity TEXT NOT NULL,
   servings_count INTEGER DEFAULT 10,
+  price NUMERIC(10,2) DEFAULT 0,
+  original_price NUMERIC(10,2),
   image_url TEXT NOT NULL,
   available_from TIMESTAMPTZ NOT NULL,
   collection_deadline TIMESTAMPTZ NOT NULL,

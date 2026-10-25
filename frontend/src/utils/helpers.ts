@@ -81,3 +81,34 @@ export const CAMPUS_OPTIONS = [
   'MIT Campus Dining',
   'Texas A&M Commons',
 ];
+
+export function formatFoodPrice(price?: number, originalPrice?: number): {
+  isFree: boolean;
+  priceFormatted: string;
+  originalPriceFormatted?: string;
+  discountPercent?: number;
+} {
+  const p = typeof price === 'number' ? price : (price !== undefined && price !== null ? parseFloat(String(price)) : 0);
+  if (isNaN(p) || p <= 0) {
+    return {
+      isFree: true,
+      priceFormatted: 'Free / ₹0',
+    };
+  }
+
+  const op = typeof originalPrice === 'number' ? originalPrice : (originalPrice ? parseFloat(String(originalPrice)) : undefined);
+  let discountPercent: number | undefined;
+  if (op && op > p) {
+    discountPercent = Math.round(((op - p) / op) * 100);
+  }
+
+  const formattedMain = `₹${p % 1 === 0 ? p : p.toFixed(2)}`;
+  const formattedOriginal = op && op > p ? `₹${op % 1 === 0 ? op : op.toFixed(2)}` : undefined;
+
+  return {
+    isFree: false,
+    priceFormatted: formattedMain,
+    originalPriceFormatted: formattedOriginal,
+    discountPercent,
+  };
+}

@@ -9,10 +9,11 @@ import {
   RotateCcw, 
   ArrowRight,
   Sparkles,
-  AlertCircle
+  AlertCircle,
+  Tag
 } from 'lucide-react';
 import { FoodPost, User } from '../types';
-import { formatTimeRemaining, formatDateTime } from '../utils/helpers';
+import { formatTimeRemaining, formatDateTime, formatFoodPrice } from '../utils/helpers';
 
 interface MyClaimsViewProps {
   currentUser: User | null;
@@ -92,6 +93,7 @@ export const MyClaimsView: React.FC<MyClaimsViewProps> = ({
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             {activeClaims.map((post) => {
               const timeInfo = formatTimeRemaining(post.collectionDeadline);
+              const priceInfo = formatFoodPrice(post.price, post.originalPrice);
               return (
                 <div
                   key={post.id}
@@ -103,9 +105,15 @@ export const MyClaimsView: React.FC<MyClaimsViewProps> = ({
                     {/* Header */}
                     <div className="flex items-start justify-between gap-3 mb-3">
                       <div>
-                        <span className="inline-block px-2.5 py-0.5 rounded-md text-[11px] font-bold bg-emerald-100 text-emerald-800 uppercase tracking-wide mb-1">
-                          Pickup Code Ready
-                        </span>
+                        <div className="flex items-center gap-1.5 mb-1">
+                          <span className="inline-block px-2.5 py-0.5 rounded-md text-[11px] font-bold bg-emerald-100 text-emerald-800 uppercase tracking-wide">
+                            Pickup Code Ready
+                          </span>
+                          <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[11px] font-black bg-amber-100 text-amber-900 border border-amber-200">
+                            <Tag className="w-3 h-3 text-amber-600" />
+                            {priceInfo.priceFormatted}
+                          </span>
+                        </div>
                         <h3 className="text-lg font-black text-slate-900 line-clamp-1">
                           {post.foodName}
                         </h3>
@@ -126,11 +134,15 @@ export const MyClaimsView: React.FC<MyClaimsViewProps> = ({
                       </div>
                     </div>
 
-                    {/* Quantity & Deadline */}
-                    <div className="grid grid-cols-2 gap-2 my-3 p-3 bg-slate-50 rounded-xl border border-slate-100 text-xs">
+                    {/* Quantity, Price Due & Deadline */}
+                    <div className="grid grid-cols-3 gap-2 my-3 p-3 bg-slate-50 rounded-xl border border-slate-100 text-xs">
                       <div>
                         <span className="text-slate-400 block font-medium">Quantity:</span>
                         <span className="font-bold text-slate-800">{post.quantity}</span>
+                      </div>
+                      <div>
+                        <span className="text-slate-400 block font-medium">Pay at Counter:</span>
+                        <span className="font-black text-emerald-700">{priceInfo.priceFormatted}</span>
                       </div>
                       <div>
                         <span className="text-slate-400 block font-medium">Collect Before:</span>
@@ -203,7 +215,7 @@ export const MyClaimsView: React.FC<MyClaimsViewProps> = ({
                   <div>
                     <h4 className="text-sm font-bold text-slate-900">{post.foodName}</h4>
                     <p className="text-xs text-slate-500">
-                      {post.canteenName} · {post.quantity}
+                      {post.canteenName} · {post.quantity} · <span className="font-semibold text-emerald-700">{formatFoodPrice(post.price, post.originalPrice).priceFormatted}</span>
                     </p>
                   </div>
                 </div>

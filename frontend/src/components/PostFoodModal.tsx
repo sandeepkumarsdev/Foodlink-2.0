@@ -10,7 +10,8 @@ import {
   Sparkles,
   Flame,
   Snowflake,
-  Utensils
+  Utensils,
+  Tag
 } from 'lucide-react';
 import { User } from '../types';
 import { PRESET_FOOD_IMAGES } from '../utils/helpers';
@@ -32,6 +33,8 @@ export const PostFoodModal: React.FC<PostFoodModalProps> = ({
   const [description, setDescription] = useState('');
   const [quantity, setQuantity] = useState('20 portions');
   const [servingsCount, setServingsCount] = useState(20);
+  const [price, setPrice] = useState('20');
+  const [originalPrice, setOriginalPrice] = useState('60');
   const [location, setLocation] = useState(
     currentUser?.canteenName 
       ? `${currentUser.canteenName} Pickup Counter #1` 
@@ -49,6 +52,12 @@ export const PostFoodModal: React.FC<PostFoodModalProps> = ({
   const [temperature, setTemperature] = useState<'HOT' | 'COLD' | 'ROOM_TEMP'>('HOT');
   const [dietaryTags, setDietaryTags] = useState<string[]>(['Vegetarian', 'Halal-Friendly']);
   const [error, setError] = useState<string | null>(null);
+
+  const numPrice = parseFloat(price) || 0;
+  const numOriginal = parseFloat(originalPrice) || 0;
+  const discountPercent = numOriginal > numPrice && numOriginal > 0 
+    ? Math.round(((numOriginal - numPrice) / numOriginal) * 100) 
+    : 0;
 
   const availableTags = [
     'Vegetarian',
@@ -94,12 +103,17 @@ export const PostFoodModal: React.FC<PostFoodModalProps> = ({
       return;
     }
 
+    const numPrice = parseFloat(price) || 0;
+    const numOriginal = parseFloat(originalPrice) || 0;
+
     try {
       await onSubmit({
         foodName,
         description,
         quantity,
         servingsCount,
+        price: numPrice,
+        originalPrice: numOriginal > 0 ? numOriginal : undefined,
         availableFrom: new Date().toISOString(),
         collectionDeadline: new Date(collectionDeadline).toISOString(),
         location,
@@ -248,6 +262,117 @@ export const PostFoodModal: React.FC<PostFoodModalProps> = ({
                 className="w-full text-xs px-3.5 py-2.5 rounded-xl border border-slate-300 focus:outline-emerald-500 font-medium"
               />
             </div>
+          </div>
+
+          {/* Affordable Surplus Meal Pricing */}
+          <div className="p-4 rounded-2xl bg-emerald-50/70 border border-emerald-200/80 space-y-3">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <Tag className="w-4 h-4 text-emerald-700" />
+                <label className="text-xs font-bold uppercase tracking-wider text-emerald-950">
+                  Affordable Surplus Food Pricing
+                </label>
+              </div>
+              {discountPercent > 0 && (
+                <span className="text-[11px] font-black px-2.5 py-0.5 rounded-full bg-emerald-600 text-white shadow-2xs">
+                  {discountPercent}% OFF Campus Discount
+                </span>
+              )}
+            </div>
+
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <div>
+                <label className="block text-[11px] font-bold text-slate-700 mb-1">
+                  Selling Price for Students (₹) *
+                </label>
+                <div className="relative">
+                  <span className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-500 font-bold text-sm">₹</span>
+                  <input
+                    type="number"
+                    min={0}
+                    step="0.5"
+                    required
+                    placeholder="e.g. 20 (or 0 for Free)"
+                    value={price}
+                    onChange={(e) => setPrice(e.target.value)}
+                    className="w-full text-xs pl-7 pr-3.5 py-2.5 rounded-xl border border-slate-300 bg-white focus:outline-emerald-500 font-bold text-emerald-900"
+                  />
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-[11px] font-bold text-slate-700 mb-1">
+                  Regular Menu Price (₹) <span className="font-normal text-slate-400">(Optional)</span>
+                </label>
+                <div className="relative">
+                  <span className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 font-bold text-sm">₹</span>
+                  <input
+                    type="number"
+                    min={0}
+                    step="0.5"
+                    placeholder="e.g. 60 (Original canteen price)"
+                    value={originalPrice}
+                    onChange={(e) => setOriginalPrice(e.target.value)}
+                    className="w-full text-xs pl-7 pr-3.5 py-2.5 rounded-xl border border-slate-300 bg-white focus:outline-emerald-500 font-medium text-slate-600"
+                  />
+                </div>
+              </div>
+            </div>
+
+            {/* Quick Price Presets */}
+            <div className="flex flex-wrap items-center justify-between gap-2 pt-1 border-t border-emerald-100">
+              <span className="text-[10px] text-slate-500 font-medium">Quick Presets:</span>
+              <div className="flex items-center gap-1.5">
+                <button
+                  type="button"
+                  onClick={() => { setPrice('0'); setOriginalPrice(''); }}
+                  className={`px-2.5 py-1 rounded-lg text-[10px] font-bold transition-all cursor-pointer ${
+                    numPrice === 0 
+                      ? 'bg-emerald-700 text-white' 
+                      : 'bg-white text-slate-700 border border-slate-200 hover:border-emerald-300'
+                  }`}
+                >
+                  Free (₹0)
+                </button>
+                <button
+                  type="button"
+                  onClick={() => { setPrice('15'); setOriginalPrice('45'); }}
+                  className={`px-2.5 py-1 rounded-lg text-[10px] font-bold transition-all cursor-pointer ${
+                    numPrice === 15 
+                      ? 'bg-emerald-700 text-white' 
+                      : 'bg-white text-slate-700 border border-slate-200 hover:border-emerald-300'
+                  }`}
+                >
+                  ₹15
+                </button>
+                <button
+                  type="button"
+                  onClick={() => { setPrice('20'); setOriginalPrice('60'); }}
+                  className={`px-2.5 py-1 rounded-lg text-[10px] font-bold transition-all cursor-pointer ${
+                    numPrice === 20 
+                      ? 'bg-emerald-700 text-white' 
+                      : 'bg-white text-slate-700 border border-slate-200 hover:border-emerald-300'
+                  }`}
+                >
+                  ₹20
+                </button>
+                <button
+                  type="button"
+                  onClick={() => { setPrice('30'); setOriginalPrice('80'); }}
+                  className={`px-2.5 py-1 rounded-lg text-[10px] font-bold transition-all cursor-pointer ${
+                    numPrice === 30 
+                      ? 'bg-emerald-700 text-white' 
+                      : 'bg-white text-slate-700 border border-slate-200 hover:border-emerald-300'
+                  }`}
+                >
+                  ₹30
+                </button>
+              </div>
+            </div>
+
+            <p className="text-[11px] text-emerald-800 leading-snug">
+              💡 <strong>Note:</strong> Students will see this price when claiming and pay at the canteen counter upon picking up their food with their verification code.
+            </p>
           </div>
 
           {/* Collection Deadline */}
