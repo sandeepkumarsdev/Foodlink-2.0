@@ -90,6 +90,7 @@ export const LandingPage: React.FC<LandingPageProps> = ({
   const [error, setError] = useState<string | null>(null);
 
   // Email Verification States
+  const [isVerifyingStep, setIsVerifyingStep] = useState(false);
   const [verificationCode, setVerificationCode] = useState('');
   const [isSendingCode, setIsSendingCode] = useState(false);
   const [isVerifyingCode, setIsVerifyingCode] = useState(false);
@@ -106,6 +107,8 @@ export const LandingPage: React.FC<LandingPageProps> = ({
     const handleSetAuthMode = (e: any) => {
       if (e.detail === 'LOGIN' || e.detail === 'REGISTER') {
         setAuthMode(e.detail);
+        setIsVerifyingStep(false);
+        setError(null);
       }
     };
     window.addEventListener('foodlink:set-auth-mode', handleSetAuthMode);
@@ -370,12 +373,7 @@ export const LandingPage: React.FC<LandingPageProps> = ({
 
   const handleEmailChange = (newVal: string) => {
     setEmail(newVal);
-    if (isEmailVerified && newVal.trim().toLowerCase() !== verifiedEmailAddress) {
-      setIsEmailVerified(false);
-      setCodeSentMessage(null);
-      setPreviewCode(null);
-      setVerificationCode('');
-    }
+    setError(null);
   };
 
   const handleSendVerificationCode = async () => {
@@ -386,7 +384,7 @@ export const LandingPage: React.FC<LandingPageProps> = ({
     setError(null);
     setIsSendingCode(true);
     try {
-      const res = await api.sendVerificationCode(email.trim());
+      const res = await api.sendVerificationCode(email.trim().toLowerCase());
       setCodeSentMessage(res.message);
       if (res.previewCode) {
         setPreviewCode(res.previewCode);
@@ -399,21 +397,30 @@ export const LandingPage: React.FC<LandingPageProps> = ({
     }
   };
 
-  const handleVerifyCode = async () => {
-    if (!verificationCode.trim()) {
-      setError('Please enter the 6-digit verification code');
+  const handleVerifyAndRegister = async () => {
+    if (!verificationCode.trim() || verificationCode.trim().length < 6) {
+      setError('Please enter the complete 6-digit verification code.');
       return;
     }
     setError(null);
     setIsVerifyingCode(true);
     try {
-      await api.verifyCode(email.trim(), verificationCode.trim());
-      setIsEmailVerified(true);
-      setVerifiedEmailAddress(email.trim().toLowerCase());
-      setCodeSentMessage('Email verified successfully!');
-      setError(null);
+      // 1. Verify verification code
+      await api.verifyCode(email.trim().toLowerCase(), verificationCode.trim());
+
+      // 2. Register account and log in
+      await onRegister({
+        name: name.trim(),
+        email: email.trim().toLowerCase(),
+        password,
+        phone,
+        userType: selectedRole,
+        college,
+        canteenName: selectedRole === 'COLLEGE' ? canteenName : undefined,
+        code: verificationCode.trim(),
+      });
     } catch (err: any) {
-      setError(err.message || 'Invalid or expired verification code');
+      setError(err.message || 'Invalid or expired verification code. Please check your email or request a new code.');
     } finally {
       setIsVerifyingCode(false);
     }
@@ -435,12 +442,13 @@ export const LandingPage: React.FC<LandingPageProps> = ({
         }
         await onLogin(email.trim(), password, selectedRole);
       } else {
-        if (!name.trim() || !email.trim()) {
-          setError('Please fill in all required fields');
+        // Registration submission: validate form details and trigger verification code step
+        if (!name.trim()) {
+          setError('Please enter your full name');
           return;
         }
-        if (!isEmailVerified || verifiedEmailAddress !== email.trim().toLowerCase()) {
-          setError('Please verify your email address with the 6-digit verification code before registering');
+        if (!email.trim() || !email.includes('@')) {
+          setError('Please enter a valid campus email address');
           return;
         }
         if (!password) {
@@ -455,15 +463,28 @@ export const LandingPage: React.FC<LandingPageProps> = ({
           setError('Passwords do not match. Please verify your password');
           return;
         }
-        await onRegister({
-          name,
-          email: email.trim().toLowerCase(),
-          password,
-          phone,
-          userType: selectedRole,
-          college,
-          canteenName: selectedRole === 'COLLEGE' ? canteenName : undefined,
-        });
+        if (selectedRole === 'COLLEGE' && !canteenName.trim()) {
+          setError('Please specify your canteen or dining hall name');
+          return;
+        }
+
+        // Send 6-digit verification code to the user's email and transition to code input screen
+        setIsSendingCode(true);
+        try {
+          const res = await api.sendVerificationCode(email.trim().toLowerCase());
+          setCodeSentMessage(res.message);
+          if (res.previewCode) {
+            setPreviewCode(res.previewCode);
+          }
+          setCountdown(45);
+          setIsVerifyingStep(true);
+          setVerificationCode('');
+          setError(null);
+        } catch (err: any) {
+          setError(err.message || 'Failed to send verification code. Please verify your email address.');
+        } finally {
+          setIsSendingCode(false);
+        }
       }
     } catch (err: any) {
       setError(err.message || 'Authentication failed');
@@ -553,303 +574,237 @@ export const LandingPage: React.FC<LandingPageProps> = ({
             <div id="auth-section" className="bg-white rounded-3xl p-6 sm:p-8 border border-slate-200 shadow-xl space-y-6 relative overflow-hidden transition-all duration-300 scroll-mt-24">
               <div className="absolute top-0 right-0 w-32 h-32 bg-emerald-500/5 rounded-bl-full pointer-events-none" />
 
-              {/* Form Mode Selector: Login vs Register */}
-              <div className="flex p-1 bg-slate-100 rounded-xl">
-                <button
-                  type="button"
-                  onClick={() => setAuthMode('LOGIN')}
-                  className={`flex-1 py-2 text-xs font-bold rounded-lg transition-all ${
-                    authMode === 'LOGIN'
-                      ? 'bg-white text-slate-900 shadow-2xs'
-                      : 'text-slate-500 hover:text-slate-900'
-                  }`}
-                >
-                  Log In
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setAuthMode('REGISTER')}
-                  className={`flex-1 py-2 text-xs font-bold rounded-lg transition-all ${
-                    authMode === 'REGISTER'
-                      ? 'bg-white text-slate-900 shadow-2xs'
-                      : 'text-slate-500 hover:text-slate-900'
-                  }`}
-                >
-                  Create Account
-                </button>
-              </div>
-
-              {/* Role Type Selector: Student/User vs College/Canteen */}
-              <div>
-                <label className="block text-[11px] font-bold uppercase tracking-wider text-slate-500 mb-2">
-                  Select Account Type
-                </label>
-                <div className="grid grid-cols-2 gap-2.5">
-                  <button
-                    type="button"
-                    onClick={() => setSelectedRole('USER')}
-                    className={`p-3 rounded-xl border text-left transition-all flex items-center gap-2.5 ${
-                      selectedRole === 'USER'
-                        ? 'border-emerald-600 bg-emerald-50/50 text-emerald-950 ring-1 ring-emerald-600'
-                        : 'border-slate-200 hover:border-slate-300 text-slate-600'
-                    }`}
-                  >
-                    <GraduationCap className={`w-5 h-5 ${selectedRole === 'USER' ? 'text-emerald-600' : 'text-slate-400'}`} />
-                    <div>
-                      <div className="text-xs font-bold">Foodlink User</div>
-                      <div className="text-[10px] text-slate-500">Student & Staff</div>
+              {/* If on Verification Step, display prominent code entry screen */}
+              {isVerifyingStep ? (
+                <div className="space-y-6 animate-in fade-in duration-200">
+                  <div className="text-center space-y-2">
+                    <div className="w-16 h-16 rounded-3xl bg-gradient-to-tr from-emerald-600 to-teal-500 text-white flex items-center justify-center mx-auto shadow-lg shadow-emerald-500/20">
+                      <Mail className="w-8 h-8" />
                     </div>
-                  </button>
-
-                  <button
-                    type="button"
-                    onClick={() => setSelectedRole('COLLEGE')}
-                    className={`p-3 rounded-xl border text-left transition-all flex items-center gap-2.5 ${
-                      selectedRole === 'COLLEGE'
-                        ? 'border-emerald-600 bg-emerald-50/50 text-emerald-950 ring-1 ring-emerald-600'
-                        : 'border-slate-200 hover:border-slate-300 text-slate-600'
-                    }`}
-                  >
-                    <Building2 className={`w-5 h-5 ${selectedRole === 'COLLEGE' ? 'text-emerald-600' : 'text-slate-400'}`} />
-                    <div>
-                      <div className="text-xs font-bold">Canteen Staff</div>
-                      <div className="text-[10px] text-slate-500">Publish Surplus</div>
-                    </div>
-                  </button>
-                </div>
-              </div>
-
-              {/* Global Error Banner */}
-              {error && (
-                <div className="p-3.5 rounded-2xl bg-rose-50 border border-rose-200 text-xs font-semibold text-rose-700 space-y-2.5 animate-in fade-in">
-                  <div className="flex items-start gap-2">
-                    <AlertCircle className="w-4 h-4 shrink-0 text-rose-600 mt-0.5" />
-                    <div className="leading-snug">
-                      {error}
-                    </div>
+                    <h3 className="text-xl font-black text-slate-900 tracking-tight">
+                      Enter Verification Code
+                    </h3>
+                    <p className="text-xs text-slate-500 max-w-sm mx-auto leading-relaxed">
+                      We have sent a 6-digit confirmation code to{' '}
+                      <strong className="text-slate-900 font-bold">{email}</strong>. Please enter the code below to complete creating your account.
+                    </p>
                   </div>
-                  {error.toLowerCase().includes('popup') && (
-                    <button
-                      type="button"
-                      onClick={redirectToGoogleOAuth}
-                      className="w-full py-2 px-3 rounded-xl bg-rose-600 hover:bg-rose-700 text-white font-bold text-xs shadow-xs transition-all cursor-pointer flex items-center justify-center gap-2 active:scale-98"
-                    >
-                      <GoogleIcon className="w-3.5 h-3.5" />
-                      <span>Continue with Google (Full-Page Redirect)</span>
-                      <ArrowRight className="w-3.5 h-3.5" />
-                    </button>
+
+                  {codeSentMessage && (
+                    <div className="p-3 rounded-xl bg-emerald-50 border border-emerald-200 text-xs text-emerald-800 font-medium flex items-center gap-2">
+                      <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
+                      <span>{codeSentMessage}</span>
+                    </div>
                   )}
-                </div>
-              )}
 
-              {/* Google Authentication Section */}
-              <div className="space-y-2 pt-1">
-                <button
-                  type="button"
-                  onClick={handleGoogleButtonClick}
-                  disabled={isAuthenticating || isGoogleAuthenticating}
-                  className="w-full py-2.5 px-4 rounded-xl bg-white hover:bg-slate-50 text-slate-800 font-semibold text-xs border border-slate-300 shadow-2xs hover:shadow-xs transition-all flex items-center justify-center gap-2.5 cursor-pointer group active:scale-98 disabled:opacity-60"
-                >
-                  {isGoogleAuthenticating ? (
-                    <div className="w-4 h-4 border-2 border-emerald-600 border-t-transparent rounded-full animate-spin shrink-0" />
-                  ) : (
-                    <GoogleIcon className="w-4 h-4 shrink-0" />
-                  )}
-                  <span className="font-bold text-slate-700">
-                    {isGoogleAuthenticating
-                      ? 'Connecting to Google...'
-                      : authMode === 'LOGIN'
-                        ? 'Sign in with Google'
-                        : 'Sign up with Google'}
-                  </span>
-                  <span className="text-[10px] text-emerald-800 bg-emerald-100/70 font-semibold px-2 py-0.5 rounded-full ml-auto border border-emerald-200/60">
-                    {selectedRole === 'COLLEGE' ? 'Canteen' : 'Student'}
-                  </span>
-                </button>
-
-                <div className="flex items-center justify-center text-[11px] px-1 text-slate-400">
-                  <span className="flex items-center gap-1">
-                    <Sparkles className="w-3 h-3 text-emerald-600" />
-                    Auto-syncs profile & avatar
-                  </span>
-                </div>
-              </div>
-
-              {/* Divider */}
-              <div className="relative my-2">
-                <div className="absolute inset-0 flex items-center">
-                  <div className="w-full border-t border-slate-200" />
-                </div>
-                <div className="relative flex justify-center text-[10px] uppercase font-bold tracking-wider">
-                  <span className="bg-white px-2.5 text-slate-400">Or with campus email</span>
-                </div>
-              </div>
-
-              {/* Auth Form */}
-              <form onSubmit={handleSubmit} className="space-y-4">
-
-                {authMode === 'REGISTER' && (
-                  <div>
-                    <label className="block text-xs font-bold text-slate-700 mb-1">
-                      Full Name *
-                    </label>
-                    <input
-                      type="text"
-                      required
-                      placeholder="e.g. Alex Rivera or Chef Marco"
-                      value={name}
-                      onChange={(e) => setName(e.target.value)}
-                      className="w-full text-xs px-3.5 py-2.5 rounded-xl border border-slate-300 focus:outline-emerald-500 font-medium"
-                    />
-                  </div>
-                )}
-
-                <div>
-                  <label className="block text-xs font-bold text-slate-700 mb-1">
-                    Campus Email Address *
-                  </label>
-                  <input
-                    type="email"
-                    required
-                    placeholder={selectedRole === 'COLLEGE' ? 'chef.canteen@campus.edu' : 'student@campus.edu'}
-                    value={email}
-                    onChange={(e) => handleEmailChange(e.target.value)}
-                    className="w-full text-xs px-3.5 py-2.5 rounded-xl border border-slate-300 focus:outline-emerald-500 font-medium"
-                  />
-                </div>
-
-                {/* Email Verification Box in Registration Mode */}
-                {authMode === 'REGISTER' && (
-                  <div className="p-3.5 rounded-2xl bg-slate-50 border border-slate-200 space-y-2.5">
-                    <div className="flex items-center justify-between">
-                      <span className="text-[11px] font-bold text-slate-700 flex items-center gap-1.5">
-                        <Mail className="w-3.5 h-3.5 text-emerald-600" />
-                        <span>Email Verification Required</span>
-                      </span>
-                      {isEmailVerified ? (
-                        <span className="inline-flex items-center gap-1 text-[11px] font-bold text-emerald-700 bg-emerald-100 px-2.5 py-0.5 rounded-full border border-emerald-200">
-                          <CheckCircle2 className="w-3 h-3" />
-                          Verified
-                        </span>
-                      ) : (
-                        <span className="text-[10px] font-semibold text-amber-700 bg-amber-100/70 px-2 py-0.5 rounded-full border border-amber-200">
-                          Code Required
-                        </span>
-                      )}
-                    </div>
-
-                    {!isEmailVerified && (
-                      <div className="space-y-2.5 pt-1">
-                        <div className="flex items-center gap-2">
-                          <button
-                            type="button"
-                            disabled={isSendingCode || !email.trim() || countdown > 0}
-                            onClick={handleSendVerificationCode}
-                            className="py-1.5 px-3 rounded-xl bg-slate-800 hover:bg-slate-900 text-white font-bold text-xs transition-all disabled:opacity-50 cursor-pointer flex items-center gap-1.5 shrink-0"
-                          >
-                            {isSendingCode ? (
-                              <div className="w-3 h-3 border-2 border-white border-t-transparent rounded-full animate-spin" />
-                            ) : (
-                              <Send className="w-3 h-3" />
-                            )}
-                            <span>{countdown > 0 ? `Resend (${countdown}s)` : codeSentMessage ? 'Resend Code' : 'Send Code'}</span>
-                          </button>
-                          <p className="text-[11px] text-slate-500 leading-snug">
-                            {codeSentMessage ? 'Code sent! Check your email.' : 'Click to send a 6-digit verification code.'}
-                          </p>
-                        </div>
-
-                        {previewCode && (
-                          <div 
-                            onClick={() => setVerificationCode(previewCode)}
-                            className="p-2 rounded-xl bg-emerald-50 border border-emerald-200 text-[11px] text-emerald-800 font-semibold cursor-pointer hover:bg-emerald-100/70 transition-colors flex items-center justify-between"
-                            title="Click to auto-fill code"
-                          >
-                            <span>🧪 Demo Mode: Code is <strong className="font-mono text-xs">{previewCode}</strong></span>
-                            <span className="underline text-[10px]">Click to auto-fill</span>
-                          </div>
-                        )}
-
-                        {codeSentMessage && (
-                          <div className="flex items-center gap-2 pt-1">
-                            <input
-                              type="text"
-                              maxLength={6}
-                              placeholder="6-digit code"
-                              value={verificationCode}
-                              onChange={(e) => setVerificationCode(e.target.value.replace(/\D/g, ''))}
-                              className="w-32 text-center tracking-widest font-mono text-sm font-bold px-3 py-2 rounded-xl border border-slate-300 focus:outline-emerald-500 bg-white"
-                            />
-                            <button
-                              type="button"
-                              disabled={isVerifyingCode || verificationCode.length < 6}
-                              onClick={handleVerifyCode}
-                              className="flex-1 py-2 px-3 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs shadow-xs transition-all disabled:opacity-50 cursor-pointer flex items-center justify-center gap-1.5"
-                            >
-                              {isVerifyingCode ? (
-                                <div className="w-3 h-3 border-2 border-white border-t-transparent rounded-full animate-spin" />
-                              ) : (
-                                <CheckCircle2 className="w-3.5 h-3.5" />
-                              )}
-                              <span>Verify Code</span>
-                            </button>
-                          </div>
-                        )}
-                      </div>
-                    )}
-
-                    {isEmailVerified && (
-                      <div className="p-2.5 rounded-xl bg-emerald-50 border border-emerald-200 text-xs text-emerald-800 flex items-center gap-2">
-                        <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
-                        <span>Email <strong>{email}</strong> verified! You can now create your account.</span>
-                      </div>
-                    )}
-                  </div>
-                )}
-
-                {authMode === 'REGISTER' && (
-                  <>
+                  {/* Prominent Space to enter the code */}
+                  <div className="space-y-4 bg-slate-50 p-5 rounded-2xl border border-slate-200">
                     <div>
-                      <label className="block text-xs font-bold text-slate-700 mb-1">
-                        Phone Number (for collection SMS/alerts)
+                      <label className="block text-[11px] font-bold uppercase tracking-wider text-slate-600 text-center mb-2">
+                        6-Digit Verification Code
                       </label>
                       <input
-                        type="tel"
-                        placeholder="+1 (555) 000-0000"
-                        value={phone}
-                        onChange={(e) => setPhone(e.target.value)}
-                        className="w-full text-xs px-3.5 py-2.5 rounded-xl border border-slate-300 focus:outline-emerald-500 font-medium"
+                        type="text"
+                        inputMode="numeric"
+                        autoFocus
+                        maxLength={6}
+                        placeholder="• • • • • •"
+                        value={verificationCode}
+                        onChange={(e) => setVerificationCode(e.target.value.replace(/\D/g, ''))}
+                        className="w-full text-center tracking-[0.4em] font-mono text-3xl font-black py-3.5 px-4 rounded-xl border-2 border-emerald-500 focus:border-emerald-600 focus:outline-emerald-500 bg-white text-slate-900 shadow-inner"
                       />
+                      <p className="text-[11px] text-slate-400 text-center mt-1.5">
+                        Check your spam or junk folder if you don't see the email within 1 minute.
+                      </p>
                     </div>
 
-                    <div>
-                      <label className="block text-xs font-bold text-slate-700 mb-1">
-                        College / Campus *
-                      </label>
-                      <select
-                        value={college}
-                        onChange={(e) => setCollege(e.target.value)}
-                        className="w-full text-xs px-3.5 py-2.5 rounded-xl border border-slate-300 focus:outline-emerald-500 font-medium bg-white"
+                    {previewCode && (
+                      <div
+                        onClick={() => setVerificationCode(previewCode)}
+                        className="p-2.5 rounded-xl bg-emerald-100/70 border border-emerald-300 text-xs text-emerald-900 font-semibold cursor-pointer hover:bg-emerald-200/70 transition-colors flex items-center justify-between"
+                        title="Click to auto-fill code"
                       >
-                        {CAMPUS_OPTIONS.filter((c) => c !== 'All Campuses').map((camp) => (
-                          <option key={camp} value={camp}>
-                            {camp}
-                          </option>
-                        ))}
-                      </select>
-                    </div>
+                        <span>🧪 Code: <strong className="font-mono text-sm">{previewCode}</strong></span>
+                        <span className="underline text-[11px] font-bold">Click to Auto-fill</span>
+                      </div>
+                    )}
 
-                    {selectedRole === 'COLLEGE' && (
+                    <button
+                      type="button"
+                      disabled={isVerifyingCode || verificationCode.length < 6}
+                      onClick={handleVerifyAndRegister}
+                      className="w-full py-3.5 px-4 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-sm shadow-md hover:shadow-emerald-500/25 transition-all active:scale-98 disabled:opacity-50 flex items-center justify-center gap-2 cursor-pointer"
+                    >
+                      {isVerifyingCode ? (
+                        <>
+                          <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                          <span>Verifying Code & Signing In...</span>
+                        </>
+                      ) : (
+                        <>
+                          <CheckCircle2 className="w-4 h-4" />
+                          <span>Verify Code & Sign In</span>
+                        </>
+                      )}
+                    </button>
+                  </div>
+
+                  {/* Resend & Back controls */}
+                  <div className="pt-2 border-t border-slate-100 flex items-center justify-between text-xs">
+                    <button
+                      type="button"
+                      disabled={countdown > 0 || isSendingCode}
+                      onClick={handleSendVerificationCode}
+                      className="font-bold text-emerald-700 hover:text-emerald-800 disabled:opacity-50 cursor-pointer flex items-center gap-1.5"
+                    >
+                      <RefreshCw className={`w-3.5 h-3.5 ${isSendingCode ? 'animate-spin' : ''}`} />
+                      <span>{countdown > 0 ? `Resend code in ${countdown}s` : 'Resend Code'}</span>
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setIsVerifyingStep(false);
+                        setError(null);
+                      }}
+                      className="text-slate-500 hover:text-slate-800 font-semibold underline cursor-pointer"
+                    >
+                      ← Edit details / email
+                    </button>
+                  </div>
+                </div>
+              ) : (
+                <>
+                  {/* Form Mode Selector: Login vs Register */}
+                  <div className="flex p-1 bg-slate-100 rounded-xl">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setAuthMode('LOGIN');
+                        setIsVerifyingStep(false);
+                        setError(null);
+                      }}
+                      className={`flex-1 py-2 text-xs font-bold rounded-lg transition-all ${
+                        authMode === 'LOGIN'
+                          ? 'bg-white text-slate-900 shadow-2xs'
+                          : 'text-slate-500 hover:text-slate-900'
+                      }`}
+                    >
+                      Log In
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setAuthMode('REGISTER');
+                        setIsVerifyingStep(false);
+                        setError(null);
+                      }}
+                      className={`flex-1 py-2 text-xs font-bold rounded-lg transition-all ${
+                        authMode === 'REGISTER'
+                          ? 'bg-white text-slate-900 shadow-2xs'
+                          : 'text-slate-500 hover:text-slate-900'
+                      }`}
+                    >
+                      Create Account
+                    </button>
+                  </div>
+
+                  {/* Role Type Selector: Student/User vs College/Canteen */}
+                  <div>
+                    <label className="block text-[11px] font-bold uppercase tracking-wider text-slate-500 mb-2">
+                      Select Account Type
+                    </label>
+                    <div className="grid grid-cols-2 gap-2.5">
+                      <button
+                        type="button"
+                        onClick={() => setSelectedRole('USER')}
+                        className={`p-3 rounded-xl border text-left transition-all flex items-center gap-2.5 ${
+                          selectedRole === 'USER'
+                            ? 'border-emerald-600 bg-emerald-50/50 text-emerald-950 ring-1 ring-emerald-600'
+                            : 'border-slate-200 hover:border-slate-300 text-slate-600'
+                        }`}
+                      >
+                        <GraduationCap className={`w-5 h-5 ${selectedRole === 'USER' ? 'text-emerald-600' : 'text-slate-400'}`} />
+                        <div>
+                          <div className="text-xs font-bold">Foodlink User</div>
+                          <div className="text-[10px] text-slate-500">Student & Staff</div>
+                        </div>
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={() => setSelectedRole('COLLEGE')}
+                        className={`p-3 rounded-xl border text-left transition-all flex items-center gap-2.5 ${
+                          selectedRole === 'COLLEGE'
+                            ? 'border-emerald-600 bg-emerald-50/50 text-emerald-950 ring-1 ring-emerald-600'
+                            : 'border-slate-200 hover:border-slate-300 text-slate-600'
+                        }`}
+                      >
+                        <Building2 className={`w-5 h-5 ${selectedRole === 'COLLEGE' ? 'text-emerald-600' : 'text-slate-400'}`} />
+                        <div>
+                          <div className="text-xs font-bold">Canteen Staff</div>
+                          <div className="text-[10px] text-slate-500">Publish Surplus</div>
+                        </div>
+                      </button>
+                    </div>
+                  </div>
+
+                  {/* Google Authentication Section */}
+                  <div className="space-y-2 pt-1">
+                    <button
+                      type="button"
+                      onClick={handleGoogleButtonClick}
+                      disabled={isAuthenticating || isGoogleAuthenticating}
+                      className="w-full py-2.5 px-4 rounded-xl bg-white hover:bg-slate-50 text-slate-800 font-semibold text-xs border border-slate-300 shadow-2xs hover:shadow-xs transition-all flex items-center justify-center gap-2.5 cursor-pointer group active:scale-98 disabled:opacity-60"
+                    >
+                      {isGoogleAuthenticating ? (
+                        <div className="w-4 h-4 border-2 border-emerald-600 border-t-transparent rounded-full animate-spin shrink-0" />
+                      ) : (
+                        <GoogleIcon className="w-4 h-4 shrink-0" />
+                      )}
+                      <span className="font-bold text-slate-700">
+                        {isGoogleAuthenticating
+                          ? 'Connecting to Google...'
+                          : authMode === 'LOGIN'
+                            ? 'Sign in with Google'
+                            : 'Sign up with Google'}
+                      </span>
+                      <span className="text-[10px] text-emerald-800 bg-emerald-100/70 font-semibold px-2 py-0.5 rounded-full ml-auto border border-emerald-200/60">
+                        {selectedRole === 'COLLEGE' ? 'Canteen' : 'Student'}
+                      </span>
+                    </button>
+
+                    <div className="flex items-center justify-center text-[11px] px-1 text-slate-400">
+                      <span className="flex items-center gap-1">
+                        <Sparkles className="w-3 h-3 text-emerald-600" />
+                        Auto-syncs profile & avatar
+                      </span>
+                    </div>
+                  </div>
+
+                  {/* Divider */}
+                  <div className="relative my-2">
+                    <div className="absolute inset-0 flex items-center">
+                      <div className="w-full border-t border-slate-200" />
+                    </div>
+                    <div className="relative flex justify-center text-[10px] uppercase font-bold tracking-wider">
+                      <span className="bg-white px-2.5 text-slate-400">Or with campus email</span>
+                    </div>
+                  </div>
+
+                  {/* Auth Form */}
+                  <form onSubmit={handleSubmit} className="space-y-4">
+                    {authMode === 'REGISTER' && (
                       <div>
                         <label className="block text-xs font-bold text-slate-700 mb-1">
-                          Canteen / Dining Facility Name *
+                          Full Name *
                         </label>
                         <input
                           type="text"
                           required
-                          placeholder="e.g. Tresidder Student Dining Hall"
-                          value={canteenName}
-                          onChange={(e) => setCanteenName(e.target.value)}
+                          placeholder="e.g. Alex Rivera or Chef Marco"
+                          value={name}
+                          onChange={(e) => setName(e.target.value)}
                           className="w-full text-xs px-3.5 py-2.5 rounded-xl border border-slate-300 focus:outline-emerald-500 font-medium"
                         />
                       </div>
@@ -857,94 +812,169 @@ export const LandingPage: React.FC<LandingPageProps> = ({
 
                     <div>
                       <label className="block text-xs font-bold text-slate-700 mb-1">
-                        Create Password *
+                        Campus Email Address *
                       </label>
-                      <div className="relative">
-                        <input
-                          type={showPassword ? 'text' : 'password'}
-                          required
-                          placeholder="At least 6 characters"
-                          value={password}
-                          onChange={(e) => setPassword(e.target.value)}
-                          className="w-full text-xs px-3.5 py-2.5 pr-10 rounded-xl border border-slate-300 focus:outline-emerald-500 font-medium"
-                        />
-                        <button
-                          type="button"
-                          onClick={() => setShowPassword(!showPassword)}
-                          className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 cursor-pointer"
-                        >
-                          {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
-                        </button>
-                      </div>
-                    </div>
-
-                    <div>
-                      <label className="block text-xs font-bold text-slate-700 mb-1">
-                        Confirm Password *
-                      </label>
-                      <div className="relative">
-                        <input
-                          type={showConfirmPassword ? 'text' : 'password'}
-                          required
-                          placeholder="Confirm your password"
-                          value={confirmPassword}
-                          onChange={(e) => setConfirmPassword(e.target.value)}
-                          className="w-full text-xs px-3.5 py-2.5 pr-10 rounded-xl border border-slate-300 focus:outline-emerald-500 font-medium"
-                        />
-                        <button
-                          type="button"
-                          onClick={() => setShowConfirmPassword(!showConfirmPassword)}
-                          className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 cursor-pointer"
-                        >
-                          {showConfirmPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
-                        </button>
-                      </div>
-                    </div>
-                  </>
-                )}
-
-                {authMode === 'LOGIN' && (
-                  <div>
-                    <label className="block text-xs font-bold text-slate-700 mb-1">
-                      Account Password *
-                    </label>
-                    <div className="relative">
                       <input
-                        type={showPassword ? 'text' : 'password'}
+                        type="email"
                         required
-                        placeholder="Enter your account password"
-                        value={password}
-                        onChange={(e) => setPassword(e.target.value)}
-                        className="w-full text-xs px-3.5 py-2.5 pr-10 rounded-xl border border-slate-300 focus:outline-emerald-500 font-medium"
+                        placeholder={selectedRole === 'COLLEGE' ? 'chef.canteen@campus.edu' : 'student@campus.edu'}
+                        value={email}
+                        onChange={(e) => handleEmailChange(e.target.value)}
+                        className="w-full text-xs px-3.5 py-2.5 rounded-xl border border-slate-300 focus:outline-emerald-500 font-medium"
                       />
-                      <button
-                        type="button"
-                        onClick={() => setShowPassword(!showPassword)}
-                        className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 cursor-pointer"
-                      >
-                        {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
-                      </button>
                     </div>
-                  </div>
-                )}
 
-                <button
-                  type="submit"
-                  disabled={isAuthenticating || (authMode === 'REGISTER' && !isEmailVerified)}
-                  className="w-full py-3 px-4 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-sm shadow-md transition-all active:scale-98 disabled:opacity-50 flex items-center justify-center gap-2 cursor-pointer"
-                >
-                  <span>
-                    {isAuthenticating
-                      ? 'Authenticating...'
-                      : authMode === 'LOGIN'
-                        ? `Sign In as ${selectedRole === 'COLLEGE' ? 'Canteen Staff' : 'Foodlink User'}`
-                        : !isEmailVerified
-                          ? 'Verify Email with Code to Register'
-                          : `Complete Registration as ${selectedRole === 'COLLEGE' ? 'Canteen Account' : 'Student Account'}`}
-                  </span>
-                  <ArrowRight className="w-4 h-4" />
-                </button>
-              </form>
+                    {authMode === 'REGISTER' && (
+                      <>
+                        <div>
+                          <label className="block text-xs font-bold text-slate-700 mb-1">
+                            Phone Number (for collection SMS/alerts)
+                          </label>
+                          <input
+                            type="tel"
+                            placeholder="+1 (555) 000-0000"
+                            value={phone}
+                            onChange={(e) => setPhone(e.target.value)}
+                            className="w-full text-xs px-3.5 py-2.5 rounded-xl border border-slate-300 focus:outline-emerald-500 font-medium"
+                          />
+                        </div>
+
+                        <div>
+                          <label className="block text-xs font-bold text-slate-700 mb-1">
+                            College / Campus *
+                          </label>
+                          <select
+                            value={college}
+                            onChange={(e) => setCollege(e.target.value)}
+                            className="w-full text-xs px-3.5 py-2.5 rounded-xl border border-slate-300 focus:outline-emerald-500 font-medium bg-white"
+                          >
+                            {CAMPUS_OPTIONS.filter((c) => c !== 'All Campuses').map((camp) => (
+                              <option key={camp} value={camp}>
+                                {camp}
+                              </option>
+                            ))}
+                          </select>
+                        </div>
+
+                        {selectedRole === 'COLLEGE' && (
+                          <div>
+                            <label className="block text-xs font-bold text-slate-700 mb-1">
+                              Canteen / Dining Facility Name *
+                            </label>
+                            <input
+                              type="text"
+                              required
+                              placeholder="e.g. Tresidder Student Dining Hall"
+                              value={canteenName}
+                              onChange={(e) => setCanteenName(e.target.value)}
+                              className="w-full text-xs px-3.5 py-2.5 rounded-xl border border-slate-300 focus:outline-emerald-500 font-medium"
+                            />
+                          </div>
+                        )}
+
+                        <div>
+                          <label className="block text-xs font-bold text-slate-700 mb-1">
+                            Create Password *
+                          </label>
+                          <div className="relative">
+                            <input
+                              type={showPassword ? 'text' : 'password'}
+                              required
+                              placeholder="At least 6 characters"
+                              value={password}
+                              onChange={(e) => setPassword(e.target.value)}
+                              className="w-full text-xs px-3.5 py-2.5 pr-10 rounded-xl border border-slate-300 focus:outline-emerald-500 font-medium"
+                            />
+                            <button
+                              type="button"
+                              onClick={() => setShowPassword(!showPassword)}
+                              className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 cursor-pointer"
+                            >
+                              {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                            </button>
+                          </div>
+                        </div>
+
+                        <div>
+                          <label className="block text-xs font-bold text-slate-700 mb-1">
+                            Confirm Password *
+                          </label>
+                          <div className="relative">
+                            <input
+                              type={showConfirmPassword ? 'text' : 'password'}
+                              required
+                              placeholder="Confirm your password"
+                              value={confirmPassword}
+                              onChange={(e) => setConfirmPassword(e.target.value)}
+                              className="w-full text-xs px-3.5 py-2.5 pr-10 rounded-xl border border-slate-300 focus:outline-emerald-500 font-medium"
+                            />
+                            <button
+                              type="button"
+                              onClick={() => setShowConfirmPassword(!showConfirmPassword)}
+                              className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 cursor-pointer"
+                            >
+                              {showConfirmPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                            </button>
+                          </div>
+                        </div>
+                      </>
+                    )}
+
+                    {authMode === 'LOGIN' && (
+                      <div>
+                        <label className="block text-xs font-bold text-slate-700 mb-1">
+                          Account Password *
+                        </label>
+                        <div className="relative">
+                          <input
+                            type={showPassword ? 'text' : 'password'}
+                            required
+                            placeholder="Enter your account password"
+                            value={password}
+                            onChange={(e) => setPassword(e.target.value)}
+                            className="w-full text-xs px-3.5 py-2.5 pr-10 rounded-xl border border-slate-300 focus:outline-emerald-500 font-medium"
+                          />
+                          <button
+                            type="button"
+                            onClick={() => setShowPassword(!showPassword)}
+                            className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 cursor-pointer"
+                          >
+                            {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                          </button>
+                        </div>
+                      </div>
+                    )}
+
+                    <button
+                      type="submit"
+                      disabled={isAuthenticating || isSendingCode}
+                      className="w-full py-3.5 px-4 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-sm shadow-md transition-all active:scale-98 disabled:opacity-50 flex items-center justify-center gap-2 cursor-pointer"
+                    >
+                      {isSendingCode ? (
+                        <>
+                          <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                          <span>Sending Verification Code...</span>
+                        </>
+                      ) : isAuthenticating ? (
+                        <>
+                          <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                          <span>{authMode === 'LOGIN' ? 'Signing In...' : 'Creating Account...'}</span>
+                        </>
+                      ) : authMode === 'LOGIN' ? (
+                        <>
+                          <span>Sign In as {selectedRole === 'COLLEGE' ? 'Canteen Staff' : 'Foodlink User'}</span>
+                          <ArrowRight className="w-4 h-4" />
+                        </>
+                      ) : (
+                        <>
+                          <span>Create Account</span>
+                          <ArrowRight className="w-4 h-4" />
+                        </>
+                      )}
+                    </button>
+                  </form>
+                </>
+              )}
 
               <div className="text-center text-xs text-slate-500">
                 <span>By continuing, you agree to our </span>

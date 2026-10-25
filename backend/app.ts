@@ -330,7 +330,7 @@ app.post('/api/auth/verify-code', async (req: Request, res: Response) => {
 });
 
 app.post('/api/auth/register', async (req: Request, res: Response) => {
-  const { name, email, password, phone, userType, college, canteenName } = req.body;
+  const { name, email, password, phone, userType, college, canteenName, code } = req.body;
 
   if (!name || !name.trim() || !email || !email.trim() || !userType || !college) {
     return res.status(400).json({ error: 'Please provide all required fields' });
@@ -344,16 +344,35 @@ app.post('/api/auth/register', async (req: Request, res: Response) => {
 
   try {
     // 1. Verify that email has been confirmed with a valid verification code
-    const verifRes = await query(
-      `SELECT id FROM email_verifications 
-       WHERE LOWER(email) = $1 AND verified = TRUE AND expires_at > NOW() - INTERVAL '30 minutes' 
-       LIMIT 1`,
-      [cleanEmail]
-    );
+    let isCodeVerified = false;
 
-    if (verifRes.rows.length === 0) {
+    if (code && typeof code === 'string') {
+      const codeRes = await query(
+        `SELECT id FROM email_verifications 
+         WHERE LOWER(email) = $1 AND code = $2 AND expires_at > NOW() 
+         ORDER BY created_at DESC LIMIT 1`,
+        [cleanEmail, code.trim()]
+      );
+      if (codeRes.rows.length > 0) {
+        isCodeVerified = true;
+      }
+    }
+
+    if (!isCodeVerified) {
+      const verifRes = await query(
+        `SELECT id FROM email_verifications 
+         WHERE LOWER(email) = $1 AND verified = TRUE AND expires_at > NOW() - INTERVAL '30 minutes' 
+         LIMIT 1`,
+        [cleanEmail]
+      );
+      if (verifRes.rows.length > 0) {
+        isCodeVerified = true;
+      }
+    }
+
+    if (!isCodeVerified) {
       return res.status(403).json({ 
-        error: 'Please verify your email address with the 6-digit code before creating an account.' 
+        error: 'Please enter the valid 6-digit verification code sent to your email to create an account.' 
       });
     }
 
