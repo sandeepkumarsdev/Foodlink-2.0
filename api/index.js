@@ -28813,6 +28813,9 @@ async function initPostgres() {
     -- Attach default password (Password123!) to demo accounts if not set
     UPDATE users SET password_hash = 'd658306858b7c961c0b0c5260cf6c255:4b36d650b0a30499ab4e8d8e29d82a51cefecce1476243f0b5f38e4f0cbd47cdbcf83ecac5897d95149ba506a597e95483f4c07ce7c168eab536583746ed4b16'
     WHERE password_hash IS NULL AND email IN ('alex.student@campus.edu', 'sarah.c@campus.edu', 'chef.marco@campus.edu', 'priya.catering@campus.edu', 'admin@foodlink.edu');
+
+    -- Ensure default avatar for users who have not set a profile picture
+    UPDATE users SET avatar_url = '/default-avatar.png' WHERE avatar_url IS NULL OR avatar_url = '';
   `);
   const userCountRes = await pg2.query("SELECT COUNT(*) as count FROM users");
   const count = parseInt(userCountRes.rows[0]?.count || "0", 10);
@@ -29120,7 +29123,7 @@ function mapRowToUser(r) {
     college: r.college,
     canteenName: r.canteen_name || void 0,
     isVerified: r.is_verified,
-    avatarUrl: r.avatar_url,
+    avatarUrl: r.avatar_url || "/default-avatar.png",
     hasPassword: Boolean(r.password_hash),
     createdAt: new Date(r.created_at).toISOString()
   };
@@ -42487,7 +42490,7 @@ app.post("/api/auth/register", async (req, res) => {
         college,
         userType === "COLLEGE" ? canteenName || `${college} Canteen` : null,
         userType === "COLLEGE" ? false : true,
-        "https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?auto=format&fit=crop&w=200&q=80"
+        "/default-avatar.png"
       ]
     );
     await query(`DELETE FROM email_verifications WHERE LOWER(email) = $1`, [cleanEmail]);
@@ -42536,6 +42539,52 @@ app.post("/api/auth/set-password", async (req, res) => {
     res.status(500).json({ error: "Failed to update password in database" });
   }
 });
+app.post("/api/users/:id/avatar", async (req, res) => {
+  const { id } = req.params;
+  const { avatarUrl } = req.body;
+  const finalAvatar = avatarUrl && typeof avatarUrl === "string" && avatarUrl.trim() !== "" ? avatarUrl.trim() : "/default-avatar.png";
+  try {
+    const updateRes = await query(
+      `UPDATE users SET avatar_url = $1 WHERE id = $2 RETURNING *`,
+      [finalAvatar, id]
+    );
+    if (updateRes.rows.length === 0) {
+      return res.status(404).json({ error: "User not found" });
+    }
+    const updatedUser = mapRowToUser(updateRes.rows[0]);
+    res.json({
+      success: true,
+      message: "Profile picture updated successfully",
+      user: updatedUser
+    });
+  } catch (err) {
+    console.error("Update avatar error:", err);
+    res.status(500).json({ error: "Failed to update profile picture in database" });
+  }
+});
+app.put("/api/users/:id/avatar", async (req, res) => {
+  const { id } = req.params;
+  const { avatarUrl } = req.body;
+  const finalAvatar = avatarUrl && typeof avatarUrl === "string" && avatarUrl.trim() !== "" ? avatarUrl.trim() : "/default-avatar.png";
+  try {
+    const updateRes = await query(
+      `UPDATE users SET avatar_url = $1 WHERE id = $2 RETURNING *`,
+      [finalAvatar, id]
+    );
+    if (updateRes.rows.length === 0) {
+      return res.status(404).json({ error: "User not found" });
+    }
+    const updatedUser = mapRowToUser(updateRes.rows[0]);
+    res.json({
+      success: true,
+      message: "Profile picture updated successfully",
+      user: updatedUser
+    });
+  } catch (err) {
+    console.error("Update avatar error:", err);
+    res.status(500).json({ error: "Failed to update profile picture in database" });
+  }
+});
 app.post("/api/auth/google", async (req, res) => {
   const { email, name: name2, avatarUrl, userType = "USER", college = "Stanford Central Campus", canteenName } = req.body;
   if (!email) {
@@ -42553,7 +42602,7 @@ app.post("/api/auth/google", async (req, res) => {
     }
     const newId = "usr_" + crypto8.randomUUID().slice(0, 8);
     const resolvedName = name2 || email.split("@")[0] || "Google User";
-    const resolvedAvatar = avatarUrl || "https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?auto=format&fit=crop&w=200&q=80";
+    const resolvedAvatar = avatarUrl || "/default-avatar.png";
     const isCollege = userType === "COLLEGE";
     const insertRes = await query(
       `INSERT INTO users (id, name, email, phone, user_type, college, canteen_name, is_verified, avatar_url, created_at)

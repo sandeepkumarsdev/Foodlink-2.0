@@ -31,6 +31,7 @@ import { LandingPage } from './components/LandingPage';
 import { StatsView } from './components/StatsView';
 import { MobileBottomNav } from './components/MobileBottomNav';
 import { SetPasswordModal } from './components/SetPasswordModal';
+import { ChangeAvatarModal } from './components/ChangeAvatarModal';
 
 export default function App() {
   // Authentication & Users
@@ -58,6 +59,7 @@ export default function App() {
   const [showRaceTesterModal, setShowRaceTesterModal] = useState(false);
   const [showDocsModal, setShowDocsModal] = useState(false);
   const [showSetPasswordModal, setShowSetPasswordModal] = useState(false);
+  const [showChangeAvatarModal, setShowChangeAvatarModal] = useState(false);
 
   // Claim Operation State
   const [isClaiming, setIsClaiming] = useState(false);
@@ -337,6 +339,7 @@ export default function App() {
         onOpenDocsModal={() => setShowDocsModal(true)}
         onOpenPostFood={() => setShowPostFoodModal(true)}
         onOpenSetPassword={() => setShowSetPasswordModal(true)}
+        onOpenChangeAvatar={() => setShowChangeAvatarModal(true)}
         onNavigateToAuth={() => handleScrollToAuth()}
         isSseConnected={isSseConnected}
         onResetDemo={async () => {
@@ -683,6 +686,19 @@ export default function App() {
           currentUser={currentUser}
           isOpen={showSetPasswordModal}
           onClose={() => setShowSetPasswordModal(false)}
+          onSuccess={(updatedUser) => {
+            setCurrentUser(updatedUser);
+            fetchData();
+          }}
+        />
+      )}
+
+      {/* Change Profile Picture Modal */}
+      {currentUser && showChangeAvatarModal && (
+        <ChangeAvatarModal
+          currentUser={currentUser}
+          isOpen={showChangeAvatarModal}
+          onClose={() => setShowChangeAvatarModal(false)}
           onSuccess={(updatedUser) => {
             setCurrentUser(updatedUser);
             fetchData();

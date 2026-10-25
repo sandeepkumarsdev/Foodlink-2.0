@@ -10,7 +10,7 @@ CREATE TABLE IF NOT EXISTS public.users (
   college TEXT NOT NULL,
   canteen_name TEXT,
   is_verified BOOLEAN DEFAULT FALSE,
-  avatar_url TEXT,
+  avatar_url TEXT DEFAULT '/default-avatar.png',
   created_at TIMESTAMPTZ DEFAULT NOW()
 );
 

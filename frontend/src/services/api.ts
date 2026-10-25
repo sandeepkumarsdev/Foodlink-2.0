@@ -172,6 +172,17 @@ export const api = {
     return data;
   },
 
+  async updateProfilePicture(userId: string, avatarUrl: string): Promise<{ success: boolean; user: User; message: string }> {
+    const res = await fetch(`/api/users/${userId}/avatar`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ avatarUrl }),
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error || 'Failed to update profile picture');
+    return data;
+  },
+
   async googleAuth(payload: {
     email: string;
     name?: string;

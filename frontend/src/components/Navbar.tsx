@@ -12,7 +12,8 @@ import {
   ChevronDown,
   RefreshCw,
   KeyRound,
-  ArrowRight
+  ArrowRight,
+  Camera
 } from 'lucide-react';
 import { User } from '../types';
 import { CAMPUS_OPTIONS } from '../utils/helpers';
@@ -32,6 +33,7 @@ interface NavbarProps {
   onOpenDocsModal?: () => void;
   onOpenPostFood: () => void;
   onOpenSetPassword?: () => void;
+  onOpenChangeAvatar?: () => void;
   onNavigateToAuth?: () => void;
   isSseConnected: boolean;
   onResetDemo: () => void;
@@ -52,6 +54,7 @@ export const Navbar: React.FC<NavbarProps> = ({
   onOpenDocsModal,
   onOpenPostFood,
   onOpenSetPassword,
+  onOpenChangeAvatar,
   onNavigateToAuth,
   isSseConnected,
   onResetDemo,
@@ -211,9 +214,12 @@ export const Navbar: React.FC<NavbarProps> = ({
                     className="flex items-center gap-2 p-1.5 sm:px-2 sm:py-1.5 rounded-lg hover:bg-slate-100 border border-slate-200 transition-all text-left"
                   >
                     <img
-                      src={currentUser.avatarUrl || 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&w=100&q=80'}
+                      src={currentUser.avatarUrl || '/default-avatar.png'}
                       alt={currentUser.name}
-                      className="w-7 h-7 rounded-full object-cover ring-2 ring-emerald-500/30"
+                      className="w-7 h-7 rounded-full object-cover ring-2 ring-emerald-500/30 bg-slate-100"
+                      onError={(e) => {
+                        (e.currentTarget as HTMLImageElement).src = '/default-avatar.png';
+                      }}
                     />
                     <div className="hidden md:block">
                       <div className="flex items-center gap-1">
@@ -237,19 +243,58 @@ export const Navbar: React.FC<NavbarProps> = ({
                       className="absolute right-0 top-full mt-2 w-72 bg-white rounded-xl shadow-xl border border-slate-200 py-2 z-50 animate-in fade-in slide-in-from-top-2 duration-150"
                       onClick={() => setShowUserMenu(false)}
                     >
-                      <div className="px-3.5 py-2 border-b border-slate-100">
-                        <p className="text-xs text-slate-500">Currently logged in as:</p>
-                        <p className="text-sm font-bold text-slate-800">{currentUser.name}</p>
-                        <p className="text-xs text-slate-500 truncate">{currentUser.email}</p>
-                        <span className="inline-block mt-1 px-2 py-0.5 rounded-full text-[10px] font-semibold bg-emerald-100 text-emerald-800">
-                          {currentUser.college}
-                          {currentUser.canteenName ? ` · ${currentUser.canteenName}` : ''}
-                        </span>
+                      <div className="px-3.5 py-3 border-b border-slate-100 flex items-center gap-3">
+                        <div className="relative group shrink-0">
+                          <img
+                            src={currentUser.avatarUrl || '/default-avatar.png'}
+                            alt={currentUser.name}
+                            className="w-11 h-11 rounded-full object-cover ring-2 ring-emerald-500/30 bg-slate-100"
+                            onError={(e) => {
+                              (e.currentTarget as HTMLImageElement).src = '/default-avatar.png';
+                            }}
+                          />
+                          <button
+                            type="button"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setShowUserMenu(false);
+                              onOpenChangeAvatar?.();
+                            }}
+                            className="absolute inset-0 rounded-full bg-black/40 text-white flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity cursor-pointer"
+                            title="Change Profile Picture"
+                          >
+                            <Camera className="w-4 h-4" />
+                          </button>
+                        </div>
+                        <div className="min-w-0 flex-1">
+                          <p className="text-sm font-bold text-slate-800 truncate">{currentUser.name}</p>
+                          <p className="text-xs text-slate-500 truncate">{currentUser.email}</p>
+                          <span className="inline-block mt-0.5 px-2 py-0.5 rounded-full text-[10px] font-semibold bg-emerald-100 text-emerald-800 truncate max-w-full">
+                            {currentUser.college}
+                            {currentUser.canteenName ? ` · ${currentUser.canteenName}` : ''}
+                          </span>
+                        </div>
                       </div>
 
+                      <div className="py-1 px-2 space-y-0.5">
+                        <button
+                          type="button"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setShowUserMenu(false);
+                            onOpenChangeAvatar?.();
+                          }}
+                          className="w-full flex items-center justify-between px-3 py-2 text-xs text-slate-700 hover:bg-slate-50 hover:text-emerald-700 rounded-lg font-medium transition-colors cursor-pointer"
+                        >
+                          <div className="flex items-center gap-2">
+                            <Camera className="w-3.5 h-3.5 text-emerald-600" />
+                            <span>Change Profile Picture</span>
+                          </div>
+                          <span className="text-[9px] font-bold px-1.5 py-0.5 rounded-full bg-slate-100 text-slate-600">
+                            Edit
+                          </span>
+                        </button>
 
-
-                      <div className="py-1 px-2">
                         <button
                           type="button"
                           onClick={(e) => {
@@ -272,7 +317,7 @@ export const Navbar: React.FC<NavbarProps> = ({
                       <div className="border-t border-slate-100 mt-1 pt-1 px-2">
                         <button
                           onClick={onLogout}
-                          className="w-full flex items-center gap-2 px-3 py-1.5 text-xs text-rose-600 hover:bg-rose-50 rounded-md font-medium transition-colors"
+                          className="w-full flex items-center gap-2 px-3 py-1.5 text-xs text-rose-600 hover:bg-rose-50 rounded-md font-medium transition-colors cursor-pointer"
                         >
                           <LogOut className="w-3.5 h-3.5" />
                           <span>Sign Out</span>

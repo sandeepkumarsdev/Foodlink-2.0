@@ -236,6 +236,9 @@ export async function initPostgres() {
     -- Attach default password (Password123!) to demo accounts if not set
     UPDATE users SET password_hash = 'd658306858b7c961c0b0c5260cf6c255:4b36d650b0a30499ab4e8d8e29d82a51cefecce1476243f0b5f38e4f0cbd47cdbcf83ecac5897d95149ba506a597e95483f4c07ce7c168eab536583746ed4b16'
     WHERE password_hash IS NULL AND email IN ('alex.student@campus.edu', 'sarah.c@campus.edu', 'chef.marco@campus.edu', 'priya.catering@campus.edu', 'admin@foodlink.edu');
+
+    -- Ensure default avatar for users who have not set a profile picture
+    UPDATE users SET avatar_url = '/default-avatar.png' WHERE avatar_url IS NULL OR avatar_url = '';
   `);
 
   // Check if users table is populated; if not, seed initial data
@@ -396,7 +399,7 @@ export function mapRowToUser(r: any): User {
     college: r.college,
     canteenName: r.canteen_name || undefined,
     isVerified: r.is_verified,
-    avatarUrl: r.avatar_url,
+    avatarUrl: r.avatar_url || '/default-avatar.png',
     hasPassword: Boolean(r.password_hash),
     createdAt: new Date(r.created_at).toISOString(),
   };

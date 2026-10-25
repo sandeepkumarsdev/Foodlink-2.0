@@ -379,7 +379,7 @@ app.post('/api/auth/register', async (req: Request, res: Response) => {
         college,
         userType === 'COLLEGE' ? canteenName || `${college} Canteen` : null,
         userType === 'COLLEGE' ? false : true,
-        'https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?auto=format&fit=crop&w=200&q=80',
+        '/default-avatar.png',
       ]
     );
 
@@ -441,6 +441,67 @@ app.post('/api/auth/set-password', async (req: Request, res: Response) => {
   }
 });
 
+// Update Profile Picture / Avatar Endpoint
+app.post('/api/users/:id/avatar', async (req: Request, res: Response) => {
+  const { id } = req.params;
+  const { avatarUrl } = req.body;
+
+  const finalAvatar = avatarUrl && typeof avatarUrl === 'string' && avatarUrl.trim() !== ''
+    ? avatarUrl.trim()
+    : '/default-avatar.png';
+
+  try {
+    const updateRes = await query(
+      `UPDATE users SET avatar_url = $1 WHERE id = $2 RETURNING *`,
+      [finalAvatar, id]
+    );
+
+    if (updateRes.rows.length === 0) {
+      return res.status(404).json({ error: 'User not found' });
+    }
+
+    const updatedUser = mapRowToUser(updateRes.rows[0]);
+    res.json({
+      success: true,
+      message: 'Profile picture updated successfully',
+      user: updatedUser,
+    });
+  } catch (err: any) {
+    console.error('Update avatar error:', err);
+    res.status(500).json({ error: 'Failed to update profile picture in database' });
+  }
+});
+
+app.put('/api/users/:id/avatar', async (req: Request, res: Response) => {
+  const { id } = req.params;
+  const { avatarUrl } = req.body;
+
+  const finalAvatar = avatarUrl && typeof avatarUrl === 'string' && avatarUrl.trim() !== ''
+    ? avatarUrl.trim()
+    : '/default-avatar.png';
+
+  try {
+    const updateRes = await query(
+      `UPDATE users SET avatar_url = $1 WHERE id = $2 RETURNING *`,
+      [finalAvatar, id]
+    );
+
+    if (updateRes.rows.length === 0) {
+      return res.status(404).json({ error: 'User not found' });
+    }
+
+    const updatedUser = mapRowToUser(updateRes.rows[0]);
+    res.json({
+      success: true,
+      message: 'Profile picture updated successfully',
+      user: updatedUser,
+    });
+  } catch (err: any) {
+    console.error('Update avatar error:', err);
+    res.status(500).json({ error: 'Failed to update profile picture in database' });
+  }
+});
+
 // Google Authentication (Sign In & Sign Up)
 app.post('/api/auth/google', async (req: Request, res: Response) => {
   const { email, name, avatarUrl, userType = 'USER', college = 'Stanford Central Campus', canteenName } = req.body;
@@ -465,7 +526,7 @@ app.post('/api/auth/google', async (req: Request, res: Response) => {
     // User is new -> Auto Sign-Up with Google!
     const newId = 'usr_' + crypto.randomUUID().slice(0, 8);
     const resolvedName = name || email.split('@')[0] || 'Google User';
-    const resolvedAvatar = avatarUrl || 'https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?auto=format&fit=crop&w=200&q=80';
+    const resolvedAvatar = avatarUrl || '/default-avatar.png';
     const isCollege = userType === 'COLLEGE';
 
     const insertRes = await query(
