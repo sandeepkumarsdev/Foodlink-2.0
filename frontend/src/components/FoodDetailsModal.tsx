@@ -339,7 +339,7 @@ export const FoodDetailsModal: React.FC<FoodDetailsModalProps> = ({
                 <div>
                   <p className="text-xs text-emerald-100 font-medium">Your Collection Pickup Code</p>
                   <p className="text-3xl font-mono font-black tracking-widest text-amber-200">
-                    {post.claimCode || claimSuccessData?.claimCode || 'FL-READY'}
+                    {myClaim?.claimCode || claimSuccessData?.claimCode || post.claimCode || 'FL-READY'}
                   </p>
                   <div className="mt-1 text-xs font-bold text-emerald-100 flex flex-wrap gap-2 items-center">
                     <span>Reserved: <strong className="text-amber-200">{activeClaimedPortions} portion{activeClaimedPortions > 1 ? 's' : ''}</strong></span>

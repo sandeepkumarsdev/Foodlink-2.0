@@ -82,10 +82,20 @@ function acquireLock(key: string): Promise<() => void> {
   });
 }
 
-// Helper to generate pickup codes
-function generateClaimCode(): string {
-  const num = Math.floor(1000 + Math.random() * 9000);
-  return `FL-${num}`;
+// Helper to generate pickup/handover codes guaranteed unique to each claim
+async function generateUniqueClaimCode(): Promise<string> {
+  for (let attempt = 0; attempt < 50; attempt++) {
+    // 6-digit random number: 100000 - 999999 (900,000 combinations)
+    const num = Math.floor(100000 + Math.random() * 900000);
+    const code = `FL-${num}`;
+    const existing = await query(`SELECT 1 FROM claims WHERE UPPER(claim_code) = UPPER($1) LIMIT 1`, [code]);
+    if (existing.rows.length === 0) {
+      return code;
+    }
+  }
+  // High volume cryptographic fallback
+  const hex = crypto.randomBytes(3).toString('hex').toUpperCase();
+  return `FL-${hex}`;
 }
 
 // SSE Clients Registry
@@ -628,9 +638,22 @@ app.get('/api/food-posts', async (req: Request, res: Response) => {
       claimsMap.get(claim.foodPostId)!.push(claim);
     }
 
+    const reqUserId = (req.query.userId as string) || (req.headers['x-user-id'] as string) || '';
+
     const posts = result.rows.map(row => {
       const post = mapRowToFoodPost(row);
-      post.claims = claimsMap.get(post.id) || [];
+      const postClaims = claimsMap.get(post.id) || [];
+      // Protect handover codes: only the student who owns the claim can see their claimCode
+      post.claims = postClaims.map(c => {
+        if (!reqUserId || c.userId !== reqUserId) {
+          const { claimCode, ...safeClaim } = c;
+          return safeClaim as Claim;
+        }
+        return c;
+      });
+      if (!reqUserId || post.claimedBy !== reqUserId) {
+        delete (post as any).claimCode;
+      }
       return post;
     });
 
@@ -642,6 +665,7 @@ app.get('/api/food-posts', async (req: Request, res: Response) => {
 });
 
 app.get('/api/food-posts/:id', async (req: Request, res: Response) => {
+  const reqUserId = (req.query.userId as string) || (req.headers['x-user-id'] as string) || '';
   try {
     const result = await query(`SELECT * FROM food_posts WHERE id = $1 LIMIT 1`, [req.params.id]);
     if (result.rows.length === 0) {
@@ -649,7 +673,16 @@ app.get('/api/food-posts/:id', async (req: Request, res: Response) => {
     }
     const post = mapRowToFoodPost(result.rows[0]);
     const claimsRes = await query(`SELECT * FROM claims WHERE food_post_id = $1 AND status IN ('CLAIMED', 'COLLECTED') ORDER BY claimed_at DESC`, [post.id]);
-    post.claims = claimsRes.rows.map(mapRowToClaim);
+    post.claims = claimsRes.rows.map(mapRowToClaim).map(c => {
+      if (!reqUserId || c.userId !== reqUserId) {
+        const { claimCode, ...safeClaim } = c;
+        return safeClaim as Claim;
+      }
+      return c;
+    });
+    if (!reqUserId || post.claimedBy !== reqUserId) {
+      delete (post as any).claimCode;
+    }
     res.json(post);
   } catch (err) {
     res.status(500).json({ error: 'Failed to fetch food post from PostgreSQL' });
@@ -856,7 +889,7 @@ app.post('/api/food-posts/:id/claim', async (req: Request, res: Response) => {
     const pricePerPortion = postRow.price ? parseFloat(postRow.price) : 0;
     const totalClaimPrice = Number((pricePerPortion * requestedPortions).toFixed(2));
 
-    const claimCode = generateClaimCode();
+    const claimCode = await generateUniqueClaimCode();
     const nowIso = new Date().toISOString();
 
     // 7. Update food_posts
@@ -883,6 +916,7 @@ app.post('/api/food-posts/:id/claim', async (req: Request, res: Response) => {
 
     // 9. Notifications
     const priceText = totalClaimPrice > 0 ? `Total amount due: ₹${totalClaimPrice.toFixed(2)} (₹${pricePerPortion}/portion)` : 'Complimentary / Free';
+    // Student notification includes the student's unique handover code
     await query(
       `INSERT INTO notifications (id, user_id, food_post_id, title, message, type, read, created_at)
        VALUES ($1, $2, $3, $4, $5, 'CLAIM_SUCCESS', FALSE, NOW())`,
@@ -895,6 +929,7 @@ app.post('/api/food-posts/:id/claim', async (req: Request, res: Response) => {
       ]
     );
 
+    // Canteen staff notification does NOT include the student's handover code
     const canteenUserRes = await query(
       `SELECT id FROM users WHERE college = $1 AND canteen_name = $2 LIMIT 1`,
       [updatedPost.collegeName, updatedPost.canteenName]
@@ -908,7 +943,7 @@ app.post('/api/food-posts/:id/claim', async (req: Request, res: Response) => {
           canteenUserRes.rows[0].id,
           updatedPost.id,
           'New Food Claim! 📋',
-          `${userName || 'Student'} just reserved ${requestedPortions} portion${requestedPortions > 1 ? 's' : ''} of "${updatedPost.foodName}". ${newRemaining} portion${newRemaining === 1 ? '' : 's'} remaining. Pickup code: ${claimCode}.`,
+          `${userName || 'Student'} just reserved ${requestedPortions} portion${requestedPortions > 1 ? 's' : ''} of "${updatedPost.foodName}". ${newRemaining} portion${newRemaining === 1 ? '' : 's'} remaining. Ask student for their unique handover code at pickup counter.`,
         ]
       );
     }
@@ -916,10 +951,12 @@ app.post('/api/food-posts/:id/claim', async (req: Request, res: Response) => {
     // 10. Commit PostgreSQL Transaction
     await pg.exec('COMMIT;');
 
-    // Broadcast SSE update
+    // Broadcast SSE update (without leaking student handover code)
+    const broadcastPost = { ...updatedPost };
+    delete (broadcastPost as any).claimCode;
     sseBroadcast({
       type: 'FOOD_CLAIMED',
-      foodPost: updatedPost,
+      foodPost: broadcastPost,
       foodPostId: updatedPost.id,
       claimedBy: userId,
       timestamp: new Date().toISOString(),
@@ -945,6 +982,12 @@ app.post('/api/food-posts/:id/collect', async (req: Request, res: Response) => {
   const { id } = req.params;
   const { verifiedCode, claimId } = req.body;
 
+  if (!verifiedCode || !String(verifiedCode).trim()) {
+    return res.status(400).json({ error: 'Please enter the student’s handover code to verify pickup.' });
+  }
+
+  const cleanCode = String(verifiedCode).trim().toUpperCase();
+
   try {
     const postRes = await query(`SELECT * FROM food_posts WHERE id = $1`, [id]);
     if (postRes.rows.length === 0) {
@@ -957,16 +1000,33 @@ app.post('/api/food-posts/:id/collect', async (req: Request, res: Response) => {
     let targetClaim: any = null;
     if (claimId) {
       const cRes = await query(`SELECT * FROM claims WHERE id = $1 AND food_post_id = $2`, [claimId, id]);
-      if (cRes.rows[0]) targetClaim = cRes.rows[0];
-    } else if (verifiedCode) {
+      if (cRes.rows[0]) {
+        targetClaim = cRes.rows[0];
+        // Enforce that verifiedCode matches this claim's unique handover code
+        if (targetClaim.claim_code.trim().toUpperCase() !== cleanCode) {
+          return res.status(400).json({
+            error: `Invalid handover code for ${targetClaim.user_name || 'student'}'s reservation. Please check the code shown on the student's screen.`
+          });
+        }
+      } else {
+        return res.status(404).json({ error: 'Reservation claim not found for this food post.' });
+      }
+    } else {
+      // Find the specific active claim matching this unique code on this food post
       const cRes = await query(
-        `SELECT * FROM claims WHERE food_post_id = $1 AND UPPER(claim_code) = UPPER($2) AND status = 'CLAIMED' LIMIT 1`,
-        [id, verifiedCode.trim()]
+        `SELECT * FROM claims WHERE food_post_id = $1 AND UPPER(claim_code) = $2 AND status = 'CLAIMED' LIMIT 1`,
+        [id, cleanCode]
       );
-      if (cRes.rows[0]) targetClaim = cRes.rows[0];
+      if (cRes.rows[0]) {
+        targetClaim = cRes.rows[0];
+      }
     }
 
     if (targetClaim) {
+      if (targetClaim.status === 'COLLECTED') {
+        return res.status(400).json({ error: 'This reservation has already been marked collected.' });
+      }
+
       // Mark specific claim as COLLECTED
       await query(`UPDATE claims SET status = 'COLLECTED', collected_at = $1 WHERE id = $2`, [nowIso, targetClaim.id]);
 
@@ -983,14 +1043,15 @@ app.post('/api/food-posts/:id/collect', async (req: Request, res: Response) => {
         ]
       );
     } else {
-      // If verifying post code directly without specific claim ID
-      if (verifiedCode && post.claimCode && verifiedCode.trim().toUpperCase() !== post.claimCode.trim().toUpperCase()) {
-        return res.status(400).json({ error: `Invalid collection code. Code does not match any active reservation.` });
+      // If verifying post code directly without specific claim ID (fallback)
+      if (post.claimCode && cleanCode === post.claimCode.trim().toUpperCase()) {
+        await query(
+          `UPDATE claims SET status = 'COLLECTED', collected_at = $1 WHERE food_post_id = $2 AND status = 'CLAIMED'`,
+          [nowIso, id]
+        );
+      } else {
+        return res.status(400).json({ error: 'Invalid handover code. No active reservation found matching this code.' });
       }
-      await query(
-        `UPDATE claims SET status = 'COLLECTED', collected_at = $1 WHERE food_post_id = $2 AND status = 'CLAIMED'`,
-        [nowIso, id]
-      );
     }
 
     // Check if any active uncollected claims or remaining portions remain
@@ -1017,9 +1078,16 @@ app.post('/api/food-posts/:id/collect', async (req: Request, res: Response) => {
     const claimsRes = await query(`SELECT * FROM claims WHERE food_post_id = $1 AND status IN ('CLAIMED', 'COLLECTED') ORDER BY claimed_at DESC`, [id]);
     updatedPost.claims = claimsRes.rows.map(mapRowToClaim);
 
+    const broadcastPost = { ...updatedPost };
+    delete (broadcastPost as any).claimCode;
+    broadcastPost.claims = broadcastPost.claims?.map(c => {
+      const { claimCode, ...safe } = c;
+      return safe as Claim;
+    });
+
     sseBroadcast({
       type: 'FOOD_COLLECTED',
-      foodPost: updatedPost,
+      foodPost: broadcastPost,
       foodPostId: updatedPost.id,
       timestamp: new Date().toISOString(),
     });
@@ -1225,7 +1293,7 @@ app.post('/api/test/race-condition', async (req: Request, res: Response) => {
           };
         }
 
-        const code = generateClaimCode();
+        const code = await generateUniqueClaimCode();
         await query(
           `UPDATE food_posts SET status = 'CLAIMED', claimed_by = $1, claimant_name = $2, claim_code = $3, claimed_at = NOW() WHERE id = $4`,
           [student.id, student.name, code, targetRow.id]

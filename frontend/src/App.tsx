@@ -74,7 +74,7 @@ export default function App() {
     try {
       const [usersData, postsData, statsData] = await Promise.all([
         api.getUsers(),
-        api.getFoodPosts(),
+        api.getFoodPosts(currentUser ? { userId: currentUser.id } : undefined),
         api.getStats(),
       ]);
 
@@ -87,7 +87,7 @@ export default function App() {
     } finally {
       setIsLoading(false);
     }
-  }, []);
+  }, [currentUser]);
 
   useEffect(() => {
     fetchData();
@@ -115,7 +115,7 @@ export default function App() {
     const pollData = async () => {
       try {
         const [posts, statsData] = await Promise.all([
-          api.getFoodPosts(),
+          api.getFoodPosts(currentUser ? { userId: currentUser.id } : undefined),
           api.getStats()
         ]);
         
@@ -210,21 +210,21 @@ export default function App() {
   const handleCreatePost = async (postData: any) => {
     await api.createFoodPost(postData);
     setShowPostFoodModal(false);
-    const updated = await api.getFoodPosts();
+    const updated = await api.getFoodPosts(currentUser ? { userId: currentUser.id } : undefined);
     setFoodPosts(updated);
     api.getStats().then(setStats).catch(() => {});
   };
 
   const handleMarkCollected = async (postId: string, verifiedCode?: string, claimId?: string) => {
     await api.markCollected(postId, verifiedCode, claimId);
-    const updated = await api.getFoodPosts();
+    const updated = await api.getFoodPosts(currentUser ? { userId: currentUser.id } : undefined);
     setFoodPosts(updated);
     api.getStats().then(setStats).catch(() => {});
   };
 
   const handleCancelPost = async (postId: string, reason?: string) => {
     await api.cancelPost(postId, reason);
-    const updated = await api.getFoodPosts();
+    const updated = await api.getFoodPosts(currentUser ? { userId: currentUser.id } : undefined);
     setFoodPosts(updated);
     api.getStats().then(setStats).catch(() => {});
   };

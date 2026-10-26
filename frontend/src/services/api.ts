@@ -2,19 +2,21 @@ import { FoodPost, User, NotificationItem, RealtimeEvent, DashboardStats } from 
 
 export const api = {
   // Food Posts
-  async getFoodPosts(params?: { college?: string; status?: string; search?: string }): Promise<FoodPost[]> {
+  async getFoodPosts(params?: { college?: string; status?: string; search?: string; userId?: string }): Promise<FoodPost[]> {
     const query = new URLSearchParams();
     if (params?.college) query.set('college', params.college);
     if (params?.status) query.set('status', params.status);
     if (params?.search) query.set('search', params.search);
+    if (params?.userId) query.set('userId', params.userId);
 
     const res = await fetch(`/api/food-posts?${query.toString()}`);
     if (!res.ok) throw new Error('Failed to fetch food posts');
     return res.json();
   },
 
-  async getFoodPost(id: string): Promise<FoodPost> {
-    const res = await fetch(`/api/food-posts/${id}`);
+  async getFoodPost(id: string, userId?: string): Promise<FoodPost> {
+    const query = userId ? `?userId=${encodeURIComponent(userId)}` : '';
+    const res = await fetch(`/api/food-posts/${id}${query}`);
     if (!res.ok) throw new Error('Failed to fetch food post details');
     return res.json();
   },

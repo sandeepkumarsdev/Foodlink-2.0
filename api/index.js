@@ -28652,8 +28652,8 @@ if (connectionString) {
       try {
         await pgliteInstance.exec(`
           CREATE TABLE IF NOT EXISTS users (id TEXT PRIMARY KEY, name TEXT NOT NULL, email TEXT UNIQUE NOT NULL, password_hash TEXT, phone TEXT, user_type TEXT NOT NULL CHECK (user_type IN ('USER', 'COLLEGE', 'ADMIN')), college TEXT NOT NULL, canteen_name TEXT, is_verified BOOLEAN DEFAULT FALSE, avatar_url TEXT, created_at TIMESTAMPTZ DEFAULT NOW());
-          CREATE TABLE IF NOT EXISTS food_posts (id TEXT PRIMARY KEY, college_id TEXT NOT NULL, canteen_id TEXT NOT NULL, college_name TEXT NOT NULL, canteen_name TEXT NOT NULL, food_name TEXT NOT NULL, description TEXT NOT NULL, quantity TEXT NOT NULL, servings_count INTEGER DEFAULT 10, price NUMERIC(10,2) DEFAULT 0, original_price NUMERIC(10,2), image_url TEXT NOT NULL, available_from TIMESTAMPTZ NOT NULL, collection_deadline TIMESTAMPTZ NOT NULL, location TEXT NOT NULL, status TEXT NOT NULL CHECK (status IN ('AVAILABLE', 'CLAIMED', 'COLLECTED', 'EXPIRED', 'CANCELLED')), claimed_by TEXT REFERENCES users(id), claimant_name TEXT, claimant_phone TEXT, claim_code TEXT, claimed_at TIMESTAMPTZ, collected_at TIMESTAMPTZ, cancelled_at TIMESTAMPTZ, cancellation_reason TEXT, food_safety_info TEXT NOT NULL, dietary_tags JSONB DEFAULT '[]'::jsonb, temperature TEXT CHECK (temperature IN ('HOT', 'COLD', 'ROOM_TEMP')), created_at TIMESTAMPTZ DEFAULT NOW());
-          CREATE TABLE IF NOT EXISTS claims (id TEXT PRIMARY KEY, food_post_id TEXT NOT NULL REFERENCES food_posts(id) ON DELETE CASCADE, user_id TEXT NOT NULL REFERENCES users(id), user_name TEXT NOT NULL, user_phone TEXT, status TEXT NOT NULL CHECK (status IN ('CLAIMED', 'COLLECTED', 'CANCELLED')), claim_code TEXT NOT NULL, claimed_at TIMESTAMPTZ DEFAULT NOW(), collected_at TIMESTAMPTZ);
+          CREATE TABLE IF NOT EXISTS food_posts (id TEXT PRIMARY KEY, college_id TEXT NOT NULL, canteen_id TEXT NOT NULL, college_name TEXT NOT NULL, canteen_name TEXT NOT NULL, food_name TEXT NOT NULL, description TEXT NOT NULL, quantity TEXT NOT NULL, servings_count INTEGER DEFAULT 10, remaining_servings INTEGER DEFAULT 10, price NUMERIC(10,2) DEFAULT 0, original_price NUMERIC(10,2), image_url TEXT NOT NULL, available_from TIMESTAMPTZ NOT NULL, collection_deadline TIMESTAMPTZ NOT NULL, location TEXT NOT NULL, status TEXT NOT NULL CHECK (status IN ('AVAILABLE', 'CLAIMED', 'COLLECTED', 'EXPIRED', 'CANCELLED')), claimed_by TEXT REFERENCES users(id), claimant_name TEXT, claimant_phone TEXT, claim_code TEXT, claimed_at TIMESTAMPTZ, collected_at TIMESTAMPTZ, cancelled_at TIMESTAMPTZ, cancellation_reason TEXT, food_safety_info TEXT NOT NULL, dietary_tags JSONB DEFAULT '[]'::jsonb, temperature TEXT CHECK (temperature IN ('HOT', 'COLD', 'ROOM_TEMP')), created_at TIMESTAMPTZ DEFAULT NOW());
+          CREATE TABLE IF NOT EXISTS claims (id TEXT PRIMARY KEY, food_post_id TEXT NOT NULL REFERENCES food_posts(id) ON DELETE CASCADE, user_id TEXT NOT NULL REFERENCES users(id), user_name TEXT NOT NULL, user_phone TEXT, portions INTEGER DEFAULT 1, total_price NUMERIC(10,2) DEFAULT 0, status TEXT NOT NULL CHECK (status IN ('CLAIMED', 'COLLECTED', 'CANCELLED')), claim_code TEXT NOT NULL, claimed_at TIMESTAMPTZ DEFAULT NOW(), collected_at TIMESTAMPTZ);
           CREATE TABLE IF NOT EXISTS notifications (id TEXT PRIMARY KEY, user_id TEXT NOT NULL REFERENCES users(id), food_post_id TEXT REFERENCES food_posts(id) ON DELETE SET NULL, title TEXT NOT NULL, message TEXT NOT NULL, type TEXT NOT NULL, read BOOLEAN DEFAULT FALSE, created_at TIMESTAMPTZ DEFAULT NOW());
           CREATE TABLE IF NOT EXISTS email_verifications (id TEXT PRIMARY KEY, email TEXT NOT NULL, code TEXT NOT NULL, expires_at TIMESTAMPTZ NOT NULL, verified BOOLEAN DEFAULT FALSE, created_at TIMESTAMPTZ DEFAULT NOW());
         `);
@@ -28736,6 +28736,7 @@ async function initPostgres() {
       description TEXT NOT NULL,
       quantity TEXT NOT NULL,
       servings_count INTEGER DEFAULT 10,
+      remaining_servings INTEGER DEFAULT 10,
       price NUMERIC(10,2) DEFAULT 0,
       original_price NUMERIC(10,2),
       image_url TEXT NOT NULL,
@@ -28763,6 +28764,8 @@ async function initPostgres() {
       user_id TEXT NOT NULL REFERENCES users(id),
       user_name TEXT NOT NULL,
       user_phone TEXT,
+      portions INTEGER DEFAULT 1,
+      total_price NUMERIC(10,2) DEFAULT 0,
       status TEXT NOT NULL CHECK (status IN ('CLAIMED', 'COLLECTED', 'CANCELLED')),
       claim_code TEXT NOT NULL,
       claimed_at TIMESTAMPTZ DEFAULT NOW(),
@@ -28802,6 +28805,14 @@ async function initPostgres() {
     -- Ensure price & original_price columns exist on food_posts
     ALTER TABLE food_posts ADD COLUMN IF NOT EXISTS price NUMERIC(10,2) DEFAULT 0;
     ALTER TABLE food_posts ADD COLUMN IF NOT EXISTS original_price NUMERIC(10,2);
+
+    -- Ensure remaining_servings column exists on food_posts and backfill
+    ALTER TABLE food_posts ADD COLUMN IF NOT EXISTS remaining_servings INTEGER;
+    UPDATE food_posts SET remaining_servings = servings_count WHERE remaining_servings IS NULL;
+
+    -- Ensure portions & total_price columns exist on claims
+    ALTER TABLE claims ADD COLUMN IF NOT EXISTS portions INTEGER DEFAULT 1;
+    ALTER TABLE claims ADD COLUMN IF NOT EXISTS total_price NUMERIC(10,2) DEFAULT 0;
 
     -- Set demo prices for existing seeded posts if not set
     UPDATE food_posts SET price = 20.00, original_price = 60.00 WHERE id = 'post_lemon_rice' AND (price IS NULL OR price = 0);
@@ -28908,15 +28919,15 @@ async function seedPostgresData() {
   ]);
   await pg2.query(`
     INSERT INTO food_posts (
-      id, college_id, canteen_id, college_name, canteen_name, food_name, description, quantity, servings_count,
+      id, college_id, canteen_id, college_name, canteen_name, food_name, description, quantity, servings_count, remaining_servings,
       price, original_price, image_url, available_from, collection_deadline, location, status, food_safety_info, dietary_tags, temperature,
       claimed_by, claimant_name, claimant_phone, claim_code, claimed_at, collected_at, created_at
     ) VALUES 
-    ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24, $25, $26),
-    ($27, $28, $29, $30, $31, $32, $33, $34, $35, $36, $37, $38, $39, $40, $41, $42, $43, $44, $45, $46, $47, $48, $49, $50, $51, $52),
-    ($53, $54, $55, $56, $57, $58, $59, $60, $61, $62, $63, $64, $65, $66, $67, $68, $69, $70, $71, $72, $73, $74, $75, $76, $77, $78),
-    ($79, $80, $81, $82, $83, $84, $85, $86, $87, $88, $89, $90, $91, $92, $93, $94, $95, $96, $97, $98, $99, $100, $101, $102, $103, $104),
-    ($105, $106, $107, $108, $109, $110, $111, $112, $113, $114, $115, $116, $117, $118, $119, $120, $121, $122, $123, $124, $125, $126, $127, $128, $129, $130)
+    ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24, $25, $26, $27),
+    ($28, $29, $30, $31, $32, $33, $34, $35, $36, $37, $38, $39, $40, $41, $42, $43, $44, $45, $46, $47, $48, $49, $50, $51, $52, $53, $54),
+    ($55, $56, $57, $58, $59, $60, $61, $62, $63, $64, $65, $66, $67, $68, $69, $70, $71, $72, $73, $74, $75, $76, $77, $78, $79, $80, $81),
+    ($82, $83, $84, $85, $86, $87, $88, $89, $90, $91, $92, $93, $94, $95, $96, $97, $98, $99, $100, $101, $102, $103, $104, $105, $106, $107, $108),
+    ($109, $110, $111, $112, $113, $114, $115, $116, $117, $118, $119, $120, $121, $122, $123, $124, $125, $126, $127, $128, $129, $130, $131, $132, $133, $134, $135)
   `, [
     // 1. Lemon Rice (AVAILABLE)
     "post_lemon_rice",
@@ -28926,7 +28937,8 @@ async function seedPostgresData() {
     "Tresidder Student Dining Hall",
     "Fragrant Lemon Herb Rice & Dal",
     "Freshly prepared South Asian style lemon rice with mustard seeds, roasted cashews, and rich yellow lentil tadka. Packaged in sanitized hot-food takeout containers from lunch service.",
-    "20 portions",
+    "20 portions available",
+    20,
     20,
     20,
     60,
@@ -28953,7 +28965,8 @@ async function seedPostgresData() {
     "Tresidder Student Dining Hall",
     "Gourmet Baguette Sandwiches & Salad Box",
     "Assortment of freshly assembled sandwiches from today's academic conference catering: Roasted Mediterranean Veggie & Pesto, Smoked Turkey Breast with Swiss, and Caprese Ciabatta.",
-    "15 meal boxes",
+    "15 meal boxes available",
+    15,
     15,
     25,
     75,
@@ -28980,7 +28993,8 @@ async function seedPostgresData() {
     "Crossroads Dining Commons",
     "Penne Pasta Primavera with Garlic Focaccia",
     "Penne tossed with saut\xE9ed zucchini, cherry tomatoes, baby spinach, basil pesto, and parmesan. Served with warm garlic herb bread.",
-    "25 servings",
+    "25 servings available",
+    25,
     25,
     30,
     85,
@@ -29007,8 +29021,9 @@ async function seedPostgresData() {
     "Tresidder Student Dining Hall",
     "Rosemary Garlic Roasted Chicken & Wedges",
     "Tender chicken quarters slow-roasted with fresh rosemary, whole garlic cloves, served with golden potato wedges and steamed green beans.",
-    "18 portions",
+    "18 portions (Claimed)",
     18,
+    0,
     40,
     120,
     "https://images.unsplash.com/photo-1598515214211-89d3c73ae83b?auto=format&fit=crop&w=800&q=80",
@@ -29034,8 +29049,9 @@ async function seedPostgresData() {
     "Crossroads Dining Commons",
     "Morning Bakery Pastries & Fresh Fruit Bowls",
     "Assorted croissants, blueberry muffins, cinnamon scrolls, and individual melon-berry fruit cups left over from breakfast seminar.",
-    "30 items",
+    "30 items (Collected)",
     30,
+    0,
     15,
     45,
     "https://images.unsplash.com/photo-1509440159596-0249088772ff?auto=format&fit=crop&w=800&q=80",
@@ -29055,16 +29071,18 @@ async function seedPostgresData() {
     new Date(now.getTime() - 4 * 60 * 60 * 1e3).toISOString()
   ]);
   await pg2.query(`
-    INSERT INTO claims (id, food_post_id, user_id, user_name, user_phone, status, claim_code, claimed_at, collected_at)
+    INSERT INTO claims (id, food_post_id, user_id, user_name, user_phone, portions, total_price, status, claim_code, claimed_at, collected_at)
     VALUES 
-    ($1, $2, $3, $4, $5, $6, $7, $8, $9),
-    ($10, $11, $12, $13, $14, $15, $16, $17, $18)
+    ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11),
+    ($12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22)
   `, [
     "claim_alex_chicken",
     "post_roast_chicken",
     "usr_student_alex",
     "Alex Rivera",
     "+1 (555) 234-5678",
+    18,
+    720,
     "CLAIMED",
     "FL-8241",
     new Date(now.getTime() - 10 * 60 * 1e3).toISOString(),
@@ -29074,6 +29092,8 @@ async function seedPostgresData() {
     "usr_student_sarah",
     "Sarah Chen",
     "+1 (555) 345-6789",
+    30,
+    450,
     "COLLECTED",
     "FL-3190",
     pastThreeHours,
@@ -29149,6 +29169,7 @@ function mapRowToFoodPost(r) {
     description: r.description,
     quantity: r.quantity,
     servingsCount: r.servings_count || 10,
+    remainingServings: r.remaining_servings !== void 0 && r.remaining_servings !== null ? parseInt(r.remaining_servings, 10) : r.servings_count || 10,
     price: r.price !== void 0 && r.price !== null ? parseFloat(r.price) : 0,
     originalPrice: r.original_price !== void 0 && r.original_price !== null ? parseFloat(r.original_price) : void 0,
     imageUrl: r.image_url,
@@ -29189,6 +29210,8 @@ function mapRowToClaim(r) {
     userId: r.user_id,
     userName: r.user_name,
     userPhone: r.user_phone || "",
+    portions: r.portions !== void 0 && r.portions !== null ? parseInt(r.portions, 10) : 1,
+    totalPrice: r.total_price !== void 0 && r.total_price !== null ? parseFloat(r.total_price) : 0,
     status: r.status,
     claimCode: r.claim_code,
     claimedAt: new Date(r.claimed_at).toISOString(),
@@ -42257,9 +42280,17 @@ function acquireLock(key) {
     }
   });
 }
-function generateClaimCode() {
-  const num = Math.floor(1e3 + Math.random() * 9e3);
-  return `FL-${num}`;
+async function generateUniqueClaimCode() {
+  for (let attempt = 0; attempt < 50; attempt++) {
+    const num = Math.floor(1e5 + Math.random() * 9e5);
+    const code = `FL-${num}`;
+    const existing = await query(`SELECT 1 FROM claims WHERE UPPER(claim_code) = UPPER($1) LIMIT 1`, [code]);
+    if (existing.rows.length === 0) {
+      return code;
+    }
+  }
+  const hex = crypto8.randomBytes(3).toString("hex").toUpperCase();
+  return `FL-${hex}`;
 }
 var sseClients = /* @__PURE__ */ new Set();
 function sseBroadcast(event) {
@@ -42450,7 +42481,7 @@ app.post("/api/auth/verify-code", async (req, res) => {
   }
 });
 app.post("/api/auth/register", async (req, res) => {
-  const { name: name2, email, password, phone, userType, college, canteenName } = req.body;
+  const { name: name2, email, password, phone, userType, college, canteenName, code } = req.body;
   if (!name2 || !name2.trim() || !email || !email.trim() || !userType || !college) {
     return res.status(400).json({ error: "Please provide all required fields" });
   }
@@ -42459,15 +42490,32 @@ app.post("/api/auth/register", async (req, res) => {
   }
   const cleanEmail = email.trim().toLowerCase();
   try {
-    const verifRes = await query(
-      `SELECT id FROM email_verifications 
-       WHERE LOWER(email) = $1 AND verified = TRUE AND expires_at > NOW() - INTERVAL '30 minutes' 
-       LIMIT 1`,
-      [cleanEmail]
-    );
-    if (verifRes.rows.length === 0) {
+    let isCodeVerified = false;
+    if (code && typeof code === "string") {
+      const codeRes = await query(
+        `SELECT id FROM email_verifications 
+         WHERE LOWER(email) = $1 AND code = $2 AND expires_at > NOW() 
+         ORDER BY created_at DESC LIMIT 1`,
+        [cleanEmail, code.trim()]
+      );
+      if (codeRes.rows.length > 0) {
+        isCodeVerified = true;
+      }
+    }
+    if (!isCodeVerified) {
+      const verifRes = await query(
+        `SELECT id FROM email_verifications 
+         WHERE LOWER(email) = $1 AND verified = TRUE AND expires_at > NOW() - INTERVAL '30 minutes' 
+         LIMIT 1`,
+        [cleanEmail]
+      );
+      if (verifRes.rows.length > 0) {
+        isCodeVerified = true;
+      }
+    }
+    if (!isCodeVerified) {
       return res.status(403).json({
-        error: "Please verify your email address with the 6-digit code before creating an account."
+        error: "Please enter the valid 6-digit verification code sent to your email to create an account."
       });
     }
     const existing = await query(`SELECT id FROM users WHERE LOWER(email) = $1 LIMIT 1`, [cleanEmail]);
@@ -42662,19 +42710,57 @@ app.get("/api/food-posts", async (req, res) => {
       END ASC, 
       created_at DESC`;
     const result = await query(sql, params);
-    res.json(result.rows.map(mapRowToFoodPost));
+    const claimsRes = await query(`SELECT * FROM claims WHERE status IN ('CLAIMED', 'COLLECTED') ORDER BY claimed_at DESC`);
+    const claimsMap = /* @__PURE__ */ new Map();
+    for (const row of claimsRes.rows) {
+      const claim = mapRowToClaim(row);
+      if (!claimsMap.has(claim.foodPostId)) {
+        claimsMap.set(claim.foodPostId, []);
+      }
+      claimsMap.get(claim.foodPostId).push(claim);
+    }
+    const reqUserId = req.query.userId || req.headers["x-user-id"] || "";
+    const posts = result.rows.map((row) => {
+      const post = mapRowToFoodPost(row);
+      const postClaims = claimsMap.get(post.id) || [];
+      post.claims = postClaims.map((c) => {
+        if (!reqUserId || c.userId !== reqUserId) {
+          const { claimCode, ...safeClaim } = c;
+          return safeClaim;
+        }
+        return c;
+      });
+      if (!reqUserId || post.claimedBy !== reqUserId) {
+        delete post.claimCode;
+      }
+      return post;
+    });
+    res.json(posts);
   } catch (err) {
     console.error("Error fetching food posts:", err);
     res.status(500).json({ error: "Failed to fetch food posts from PostgreSQL" });
   }
 });
 app.get("/api/food-posts/:id", async (req, res) => {
+  const reqUserId = req.query.userId || req.headers["x-user-id"] || "";
   try {
     const result = await query(`SELECT * FROM food_posts WHERE id = $1 LIMIT 1`, [req.params.id]);
     if (result.rows.length === 0) {
       return res.status(404).json({ error: "Food post not found" });
     }
-    res.json(mapRowToFoodPost(result.rows[0]));
+    const post = mapRowToFoodPost(result.rows[0]);
+    const claimsRes = await query(`SELECT * FROM claims WHERE food_post_id = $1 AND status IN ('CLAIMED', 'COLLECTED') ORDER BY claimed_at DESC`, [post.id]);
+    post.claims = claimsRes.rows.map(mapRowToClaim).map((c) => {
+      if (!reqUserId || c.userId !== reqUserId) {
+        const { claimCode, ...safeClaim } = c;
+        return safeClaim;
+      }
+      return c;
+    });
+    if (!reqUserId || post.claimedBy !== reqUserId) {
+      delete post.claimCode;
+    }
+    res.json(post);
   } catch (err) {
     res.status(500).json({ error: "Failed to fetch food post from PostgreSQL" });
   }
@@ -42722,9 +42808,9 @@ app.post("/api/food-posts", async (req, res) => {
     const finalTemp = temperature || "HOT";
     const insertRes = await query(
       `INSERT INTO food_posts (
-        id, college_id, canteen_id, college_name, canteen_name, food_name, description, quantity, servings_count,
+        id, college_id, canteen_id, college_name, canteen_name, food_name, description, quantity, servings_count, remaining_servings,
         price, original_price, image_url, available_from, collection_deadline, location, status, food_safety_info, dietary_tags, temperature, created_at
-      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, 'AVAILABLE', $16, $17, $18, NOW())
+      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, 'AVAILABLE', $17, $18, $19, NOW())
       RETURNING *`,
       [
         newId,
@@ -42735,6 +42821,7 @@ app.post("/api/food-posts", async (req, res) => {
         foodName,
         description,
         quantity,
+        parsedServings,
         parsedServings,
         parsedPrice,
         parsedOriginalPrice,
@@ -42778,10 +42865,14 @@ app.post("/api/food-posts", async (req, res) => {
 });
 app.post("/api/food-posts/:id/claim", async (req, res) => {
   const { id } = req.params;
-  const { userId, userName, userPhone } = req.body;
+  const userId = req.body.userId || req.body.user?.id;
+  const userName = req.body.userName || req.body.user?.name;
+  const userPhone = req.body.userPhone || req.body.user?.phone;
+  const portions = req.body.portions;
   if (!userId) {
     return res.status(401).json({ error: "User ID is required to claim food" });
   }
+  const requestedPortions = Math.max(1, parseInt(portions, 10) || 1);
   const releaseLock = await acquireLock(id);
   try {
     await pg2.exec("BEGIN;");
@@ -42794,7 +42885,7 @@ app.post("/api/food-posts/:id/claim", async (req, res) => {
     if (postRow.status !== "AVAILABLE") {
       await pg2.exec("ROLLBACK;");
       return res.status(409).json({
-        error: "Sorry, this food has already been claimed by another user.",
+        error: "Sorry, this food is no longer available.",
         status: postRow.status,
         claimedBy: postRow.claimant_name || "Another student"
       });
@@ -42812,28 +42903,47 @@ app.post("/api/food-posts/:id/claim", async (req, res) => {
       });
       return res.status(400).json({ error: "Sorry, the collection deadline for this food has already passed." });
     }
-    if (postRow.claimed_by === userId) {
-      await pg2.exec("ROLLBACK;");
-      return res.status(400).json({ error: "You have already claimed this food post." });
+    const totalServings = postRow.servings_count || 10;
+    const currentRemaining = postRow.remaining_servings !== null && postRow.remaining_servings !== void 0 ? parseInt(postRow.remaining_servings, 10) : totalServings;
+    if (currentRemaining <= 0) {
+      await query(`UPDATE food_posts SET status = 'CLAIMED' WHERE id = $1`, [id]);
+      await pg2.exec("COMMIT;");
+      return res.status(409).json({
+        error: "Sorry, all portions of this food have already been claimed.",
+        status: "CLAIMED"
+      });
     }
-    const claimCode = generateClaimCode();
+    if (requestedPortions > currentRemaining) {
+      await pg2.exec("ROLLBACK;");
+      return res.status(400).json({
+        error: `Only ${currentRemaining} portion${currentRemaining === 1 ? "" : "s"} remaining. Please select ${currentRemaining} or fewer portions.`,
+        remainingServings: currentRemaining
+      });
+    }
+    const newRemaining = currentRemaining - requestedPortions;
+    const newStatus = newRemaining === 0 ? "CLAIMED" : "AVAILABLE";
+    const quantityText = newRemaining > 0 ? `${newRemaining} of ${totalServings} portions left` : `0 of ${totalServings} portions (Fully Claimed)`;
+    const pricePerPortion = postRow.price ? parseFloat(postRow.price) : 0;
+    const totalClaimPrice = Number((pricePerPortion * requestedPortions).toFixed(2));
+    const claimCode = await generateUniqueClaimCode();
     const nowIso = (/* @__PURE__ */ new Date()).toISOString();
     const updateRes = await query(
       `UPDATE food_posts 
-       SET status = 'CLAIMED', claimed_by = $1, claimant_name = $2, claimant_phone = $3, claim_code = $4, claimed_at = $5
-       WHERE id = $6
+       SET remaining_servings = $1, status = $2, quantity = $3, claimed_by = $4, claimant_name = $5, claimant_phone = $6, claim_code = $7, claimed_at = $8
+       WHERE id = $9
        RETURNING *`,
-      [userId, userName || "Student", userPhone || "", claimCode, nowIso, id]
+      [newRemaining, newStatus, quantityText, userId, userName || "Student", userPhone || "", claimCode, nowIso, id]
     );
     const updatedPost = mapRowToFoodPost(updateRes.rows[0]);
     const claimId = "claim_" + crypto8.randomUUID().slice(0, 8);
     const insertClaimRes = await query(
-      `INSERT INTO claims (id, food_post_id, user_id, user_name, user_phone, status, claim_code, claimed_at)
-       VALUES ($1, $2, $3, $4, $5, 'CLAIMED', $6, $7)
+      `INSERT INTO claims (id, food_post_id, user_id, user_name, user_phone, portions, total_price, status, claim_code, claimed_at)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, 'CLAIMED', $8, $9)
        RETURNING *`,
-      [claimId, id, userId, updatedPost.claimantName || "Student", updatedPost.claimantPhone || "", claimCode, nowIso]
+      [claimId, id, userId, userName || "Student", userPhone || "", requestedPortions, totalClaimPrice, claimCode, nowIso]
     );
     const claim = mapRowToClaim(insertClaimRes.rows[0]);
+    const priceText = totalClaimPrice > 0 ? `Total amount due: \u20B9${totalClaimPrice.toFixed(2)} (\u20B9${pricePerPortion}/portion)` : "Complimentary / Free";
     await query(
       `INSERT INTO notifications (id, user_id, food_post_id, title, message, type, read, created_at)
        VALUES ($1, $2, $3, $4, $5, 'CLAIM_SUCCESS', FALSE, NOW())`,
@@ -42842,7 +42952,7 @@ app.post("/api/food-posts/:id/claim", async (req, res) => {
         userId,
         updatedPost.id,
         "Claim Confirmed! \u{1F389}",
-        `You successfully reserved ${updatedPost.foodName} from ${updatedPost.canteenName}. Show pickup code ${claimCode} at the counter.`
+        `You successfully reserved ${requestedPortions} portion${requestedPortions > 1 ? "s" : ""} of ${updatedPost.foodName} from ${updatedPost.canteenName}. ${priceText}. Show pickup code ${claimCode} at the counter.`
       ]
     );
     const canteenUserRes = await query(
@@ -42858,21 +42968,23 @@ app.post("/api/food-posts/:id/claim", async (req, res) => {
           canteenUserRes.rows[0].id,
           updatedPost.id,
           "New Food Claim! \u{1F4CB}",
-          `${updatedPost.claimantName} just claimed "${updatedPost.foodName}" (${updatedPost.quantity}). Pickup code: ${claimCode}.`
+          `${userName || "Student"} just reserved ${requestedPortions} portion${requestedPortions > 1 ? "s" : ""} of "${updatedPost.foodName}". ${newRemaining} portion${newRemaining === 1 ? "" : "s"} remaining. Ask student for their unique handover code at pickup counter.`
         ]
       );
     }
     await pg2.exec("COMMIT;");
+    const broadcastPost = { ...updatedPost };
+    delete broadcastPost.claimCode;
     sseBroadcast({
       type: "FOOD_CLAIMED",
-      foodPost: updatedPost,
+      foodPost: broadcastPost,
       foodPostId: updatedPost.id,
       claimedBy: userId,
       timestamp: (/* @__PURE__ */ new Date()).toISOString()
     });
     return res.json({
       success: true,
-      message: "Food successfully claimed via PostgreSQL transaction!",
+      message: `Successfully reserved ${requestedPortions} portion${requestedPortions > 1 ? "s" : ""}!`,
       foodPost: updatedPost,
       claim
     });
@@ -42887,45 +42999,94 @@ app.post("/api/food-posts/:id/claim", async (req, res) => {
 });
 app.post("/api/food-posts/:id/collect", async (req, res) => {
   const { id } = req.params;
-  const { verifiedCode } = req.body;
+  const { verifiedCode, claimId } = req.body;
+  if (!verifiedCode || !String(verifiedCode).trim()) {
+    return res.status(400).json({ error: "Please enter the student\u2019s handover code to verify pickup." });
+  }
+  const cleanCode = String(verifiedCode).trim().toUpperCase();
   try {
     const postRes = await query(`SELECT * FROM food_posts WHERE id = $1`, [id]);
     if (postRes.rows.length === 0) {
       return res.status(404).json({ error: "Food post not found" });
     }
     const post = mapRowToFoodPost(postRes.rows[0]);
-    if (post.status !== "CLAIMED") {
-      return res.status(400).json({ error: `Cannot collect food with status ${post.status}` });
-    }
-    if (verifiedCode && post.claimCode && verifiedCode.trim().toUpperCase() !== post.claimCode.trim().toUpperCase()) {
-      return res.status(400).json({ error: `Invalid collection code. Expected ${post.claimCode}` });
-    }
     const nowIso = (/* @__PURE__ */ new Date()).toISOString();
-    const updateRes = await query(
-      `UPDATE food_posts SET status = 'COLLECTED', collected_at = $1 WHERE id = $2 RETURNING *`,
-      [nowIso, id]
-    );
-    await query(
-      `UPDATE claims SET status = 'COLLECTED', collected_at = $1 WHERE food_post_id = $2 AND status = 'CLAIMED'`,
-      [nowIso, id]
-    );
-    const updatedPost = mapRowToFoodPost(updateRes.rows[0]);
-    if (updatedPost.claimedBy) {
+    let targetClaim = null;
+    if (claimId) {
+      const cRes = await query(`SELECT * FROM claims WHERE id = $1 AND food_post_id = $2`, [claimId, id]);
+      if (cRes.rows[0]) {
+        targetClaim = cRes.rows[0];
+        if (targetClaim.claim_code.trim().toUpperCase() !== cleanCode) {
+          return res.status(400).json({
+            error: `Invalid handover code for ${targetClaim.user_name || "student"}'s reservation. Please check the code shown on the student's screen.`
+          });
+        }
+      } else {
+        return res.status(404).json({ error: "Reservation claim not found for this food post." });
+      }
+    } else {
+      const cRes = await query(
+        `SELECT * FROM claims WHERE food_post_id = $1 AND UPPER(claim_code) = $2 AND status = 'CLAIMED' LIMIT 1`,
+        [id, cleanCode]
+      );
+      if (cRes.rows[0]) {
+        targetClaim = cRes.rows[0];
+      }
+    }
+    if (targetClaim) {
+      if (targetClaim.status === "COLLECTED") {
+        return res.status(400).json({ error: "This reservation has already been marked collected." });
+      }
+      await query(`UPDATE claims SET status = 'COLLECTED', collected_at = $1 WHERE id = $2`, [nowIso, targetClaim.id]);
       await query(
         `INSERT INTO notifications (id, user_id, food_post_id, title, message, type, read, created_at)
          VALUES ($1, $2, $3, $4, $5, 'FOOD_COLLECTED', FALSE, NOW())`,
         [
           "notif_" + crypto8.randomUUID(),
-          updatedPost.claimedBy,
-          updatedPost.id,
+          targetClaim.user_id,
+          post.id,
           "Handover Completed! \u{1F37D}\uFE0F",
-          `Your pickup for ${updatedPost.foodName} has been verified by the canteen. Enjoy your meal and thank you for saving food waste!`
+          `Your pickup for ${targetClaim.portions || 1} portion(s) of ${post.foodName} has been verified by the canteen. Enjoy your meal and thank you for saving food waste!`
         ]
       );
+    } else {
+      if (post.claimCode && cleanCode === post.claimCode.trim().toUpperCase()) {
+        await query(
+          `UPDATE claims SET status = 'COLLECTED', collected_at = $1 WHERE food_post_id = $2 AND status = 'CLAIMED'`,
+          [nowIso, id]
+        );
+      } else {
+        return res.status(400).json({ error: "Invalid handover code. No active reservation found matching this code." });
+      }
     }
+    const remainingClaimsRes = await query(
+      `SELECT COUNT(*) as count FROM claims WHERE food_post_id = $1 AND status = 'CLAIMED'`,
+      [id]
+    );
+    const uncollectedClaimsCount = parseInt(remainingClaimsRes.rows[0]?.count || "0", 10);
+    let updatedPost = post;
+    const currentRemaining = post.remainingServings !== void 0 ? post.remainingServings : 0;
+    if (uncollectedClaimsCount === 0 && currentRemaining === 0) {
+      const updateRes = await query(
+        `UPDATE food_posts SET status = 'COLLECTED', collected_at = $1 WHERE id = $2 RETURNING *`,
+        [nowIso, id]
+      );
+      updatedPost = mapRowToFoodPost(updateRes.rows[0]);
+    } else {
+      const updateRes = await query(`SELECT * FROM food_posts WHERE id = $1`, [id]);
+      updatedPost = mapRowToFoodPost(updateRes.rows[0]);
+    }
+    const claimsRes = await query(`SELECT * FROM claims WHERE food_post_id = $1 AND status IN ('CLAIMED', 'COLLECTED') ORDER BY claimed_at DESC`, [id]);
+    updatedPost.claims = claimsRes.rows.map(mapRowToClaim);
+    const broadcastPost = { ...updatedPost };
+    delete broadcastPost.claimCode;
+    broadcastPost.claims = broadcastPost.claims?.map((c) => {
+      const { claimCode, ...safe } = c;
+      return safe;
+    });
     sseBroadcast({
       type: "FOOD_COLLECTED",
-      foodPost: updatedPost,
+      foodPost: broadcastPost,
       foodPostId: updatedPost.id,
       timestamp: (/* @__PURE__ */ new Date()).toISOString()
     });
@@ -42987,19 +43148,30 @@ app.post("/api/food-posts/:id/unclaim", async (req, res) => {
       return res.status(404).json({ error: "Food post not found" });
     }
     const post = mapRowToFoodPost(postRes.rows[0]);
-    if (post.claimedBy !== userId) {
-      return res.status(403).json({ error: "You did not claim this food item." });
+    const claimRes = await query(
+      `SELECT * FROM claims WHERE food_post_id = $1 AND user_id = $2 AND status = 'CLAIMED' LIMIT 1`,
+      [id, userId]
+    );
+    let portionsToRestore = 1;
+    if (claimRes.rows.length > 0) {
+      const claimRow = claimRes.rows[0];
+      portionsToRestore = parseInt(claimRow.portions, 10) || 1;
+      await query(`UPDATE claims SET status = 'CANCELLED' WHERE id = $1`, [claimRow.id]);
+    } else if (post.claimedBy === userId) {
+      portionsToRestore = post.servingsCount;
+      await query(`UPDATE claims SET status = 'CANCELLED' WHERE food_post_id = $1 AND user_id = $2 AND status = 'CLAIMED'`, [id, userId]);
+    } else {
+      return res.status(403).json({ error: "You do not have an active reservation for this food item." });
     }
-    if (post.status !== "CLAIMED") {
-      return res.status(400).json({ error: "Cannot cancel claim for non-claimed food item." });
-    }
+    const currentRemaining = post.remainingServings !== void 0 ? post.remainingServings : 0;
+    const restoredRemaining = Math.min(post.servingsCount, currentRemaining + portionsToRestore);
+    const quantityText = `${restoredRemaining} of ${post.servingsCount} portions left`;
     const updateRes = await query(
       `UPDATE food_posts 
-       SET status = 'AVAILABLE', claimed_by = NULL, claimant_name = NULL, claimant_phone = NULL, claim_code = NULL, claimed_at = NULL
-       WHERE id = $1 RETURNING *`,
-      [id]
+       SET status = 'AVAILABLE', remaining_servings = $1, quantity = $2
+       WHERE id = $3 RETURNING *`,
+      [restoredRemaining, quantityText, id]
     );
-    await query(`UPDATE claims SET status = 'CANCELLED' WHERE food_post_id = $1 AND status = 'CLAIMED'`, [id]);
     const updatedPost = mapRowToFoodPost(updateRes.rows[0]);
     sseBroadcast({
       type: "FOOD_CREATED",
@@ -43007,8 +43179,13 @@ app.post("/api/food-posts/:id/unclaim", async (req, res) => {
       foodPostId: updatedPost.id,
       timestamp: (/* @__PURE__ */ new Date()).toISOString()
     });
-    return res.json({ success: true, message: "Claim released successfully in PostgreSQL. Food is available again." });
+    return res.json({
+      success: true,
+      message: `Reservation released successfully (${portionsToRestore} portion${portionsToRestore > 1 ? "s" : ""} returned to availability).`,
+      foodPost: updatedPost
+    });
   } catch (err) {
+    console.error("Error releasing claim in PostgreSQL:", err);
     return res.status(500).json({ error: "Failed to release claim in PostgreSQL" });
   } finally {
     releaseLock();
@@ -43079,7 +43256,7 @@ app.post("/api/test/race-condition", async (req, res) => {
             response: "Sorry, this food has already been claimed by another user."
           };
         }
-        const code = generateClaimCode();
+        const code = await generateUniqueClaimCode();
         await query(
           `UPDATE food_posts SET status = 'CLAIMED', claimed_by = $1, claimant_name = $2, claim_code = $3, claimed_at = NOW() WHERE id = $4`,
           [student.id, student.name, code, targetRow.id]
@@ -43175,12 +43352,30 @@ app.get("/api/claims/my-claims", async (req, res) => {
     return res.status(400).json({ error: "userId is required" });
   }
   try {
-    const result = await query(
-      `SELECT * FROM food_posts WHERE claimed_by = $1 ORDER BY claimed_at DESC`,
+    const claimsRes = await query(
+      `SELECT c.id as claim_id, c.portions as claim_portions, c.total_price as claim_total_price,
+              c.status as claim_status, c.claim_code as claim_code, c.claimed_at as claim_claimed_at,
+              c.collected_at as claim_collected_at, fp.*
+       FROM claims c
+       JOIN food_posts fp ON c.food_post_id = fp.id
+       WHERE c.user_id = $1 AND c.status != 'CANCELLED'
+       ORDER BY c.claimed_at DESC`,
       [userId]
     );
-    res.json(result.rows.map(mapRowToFoodPost));
+    const posts = claimsRes.rows.map((r) => {
+      const post = mapRowToFoodPost(r);
+      post.claimCode = r.claim_code;
+      post.claimedPortions = r.claim_portions !== void 0 && r.claim_portions !== null ? parseInt(r.claim_portions, 10) : 1;
+      post.totalClaimPrice = r.claim_total_price !== void 0 && r.claim_total_price !== null ? parseFloat(r.claim_total_price) : post.price * (post.claimedPortions || 1);
+      post.status = r.claim_status;
+      post.quantity = `${post.claimedPortions} portion${post.claimedPortions > 1 ? "s" : ""} reserved`;
+      post.claimedAt = r.claim_claimed_at ? new Date(r.claim_claimed_at).toISOString() : post.claimedAt;
+      post.collectedAt = r.claim_collected_at ? new Date(r.claim_collected_at).toISOString() : post.collectedAt;
+      return post;
+    });
+    res.json(posts);
   } catch (err) {
+    console.error("Failed to fetch user claims:", err);
     res.status(500).json({ error: "Failed to fetch claims from PostgreSQL" });
   }
 });

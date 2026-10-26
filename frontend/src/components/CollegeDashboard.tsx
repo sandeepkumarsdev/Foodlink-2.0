@@ -18,7 +18,8 @@ import {
   Calendar,
   Layers,
   Leaf,
-  Tag
+  Tag,
+  KeyRound
 } from 'lucide-react';
 import { FoodPost, User, DashboardStats } from '../types';
 import { formatTimeRemaining, formatDateTime, formatFoodPrice } from '../utils/helpers';
@@ -75,22 +76,34 @@ export const CollegeDashboard: React.FC<CollegeDashboardProps> = ({
   });
 
   const handleVerifySubmit = async (postId: string) => {
+    if (!inputCode.trim()) {
+      alert("Please ask the student for their unique handover code.");
+      return;
+    }
     setIsSubmitting(true);
     try {
-      await onMarkCollected(postId, inputCode || undefined);
+      await onMarkCollected(postId, inputCode.trim());
       setVerifyingPostId(null);
       setInputCode('');
+    } catch (err: any) {
+      alert(err.message || 'Verification failed. Please check the handover code with the student.');
     } finally {
       setIsSubmitting(false);
     }
   };
 
   const handleVerifyClaimSubmit = async (postId: string, claimId: string) => {
+    if (!inputCode.trim()) {
+      alert("Please ask the student for their unique handover code.");
+      return;
+    }
     setIsSubmitting(true);
     try {
-      await onMarkCollected(postId, inputCode || undefined, claimId);
+      await onMarkCollected(postId, inputCode.trim(), claimId);
       setVerifyingClaimId(null);
       setInputCode('');
+    } catch (err: any) {
+      alert(err.message || 'Verification failed. Please check the handover code with the student.');
     } finally {
       setIsSubmitting(false);
     }
@@ -437,9 +450,17 @@ export const CollegeDashboard: React.FC<CollegeDashboardProps> = ({
                                       <UserIcon className="w-3.5 h-3.5 text-amber-700" />
                                       <span>{claim.userName}</span>
                                     </div>
-                                    <span className="font-mono text-xs font-black text-amber-950 bg-amber-200/90 px-2 py-0.5 rounded-md border border-amber-300">
-                                      Code: {claim.claimCode}
-                                    </span>
+                                    {claim.status === 'COLLECTED' ? (
+                                      <span className="text-[11px] font-bold text-blue-800 bg-blue-100/90 px-2 py-0.5 rounded-md border border-blue-200 flex items-center gap-1">
+                                        <CheckCircle className="w-3.5 h-3.5 text-blue-600" />
+                                        <span>Verified & Collected</span>
+                                      </span>
+                                    ) : (
+                                      <span className="text-[11px] font-bold text-amber-900 bg-amber-100/90 px-2 py-0.5 rounded-md border border-amber-200 flex items-center gap-1">
+                                        <KeyRound className="w-3.5 h-3.5 text-amber-600" />
+                                        <span>Code with Student</span>
+                                      </span>
+                                    )}
                                   </div>
 
                                   {claim.userPhone && (
@@ -463,27 +484,28 @@ export const CollegeDashboard: React.FC<CollegeDashboardProps> = ({
                                       {isVerifyingThisClaim ? (
                                         <div className="space-y-1.5 bg-white p-2.5 rounded-lg border border-amber-300 shadow-2xs">
                                           <div className="flex items-center justify-between text-[11px]">
-                                            <span className="font-bold text-slate-700">Student Pickup Code:</span>
+                                            <span className="font-bold text-slate-700">Enter Student's Code:</span>
                                             <span className="font-bold text-emerald-700">Collect ₹{claimPrice}</span>
                                           </div>
                                           <div className="flex items-center gap-1.5">
                                             <input
                                               type="text"
-                                              placeholder={claim.claimCode}
+                                              placeholder="Enter Pickup Code"
                                               value={inputCode}
                                               onChange={(e) => setInputCode(e.target.value.toUpperCase())}
-                                              className="w-full text-xs uppercase font-mono px-2.5 py-1.5 rounded-lg border border-slate-300 font-bold focus:outline-emerald-500"
+                                              className="w-full text-xs uppercase font-mono px-2.5 py-1.5 rounded-lg border border-slate-300 font-bold focus:outline-emerald-500 placeholder:normal-case placeholder:font-normal placeholder:text-slate-400"
+                                              autoFocus
                                             />
                                             <button
                                               onClick={() => handleVerifyClaimSubmit(post.id, claim.id)}
-                                              disabled={isSubmitting}
-                                              className="px-3 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs shrink-0"
+                                              disabled={isSubmitting || !inputCode.trim()}
+                                              className="px-3 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50 text-white font-bold text-xs shrink-0 cursor-pointer"
                                             >
                                               Confirm
                                             </button>
                                             <button
                                               onClick={() => { setVerifyingClaimId(null); setInputCode(''); }}
-                                              className="text-slate-400 hover:text-slate-600 p-1 text-xs"
+                                              className="text-slate-400 hover:text-slate-600 p-1 text-xs cursor-pointer"
                                             >
                                               ✕
                                             </button>
@@ -493,7 +515,7 @@ export const CollegeDashboard: React.FC<CollegeDashboardProps> = ({
                                         <button
                                           onClick={() => {
                                             setVerifyingClaimId(claim.id);
-                                            setInputCode(claim.claimCode);
+                                            setInputCode('');
                                           }}
                                           className="w-full py-1.5 px-3 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs flex items-center justify-center gap-1.5 shadow-2xs transition-colors cursor-pointer"
                                         >
@@ -520,8 +542,9 @@ export const CollegeDashboard: React.FC<CollegeDashboardProps> = ({
                             <span className="text-[10px] font-bold uppercase tracking-wider text-amber-800">
                               Claimant Details
                             </span>
-                            <span className="font-mono text-xs font-black text-amber-950 bg-amber-200/80 px-2 py-0.5 rounded-md">
-                              Code: {post.claimCode || 'FL-VERIFY'}
+                            <span className="text-[11px] font-bold text-amber-900 bg-amber-100/90 px-2.5 py-0.5 rounded-md border border-amber-200 flex items-center gap-1">
+                              <KeyRound className="w-3.5 h-3.5 text-amber-600" />
+                              <span>Code with Student</span>
                             </span>
                           </div>
                           <div className="flex items-center gap-1.5 text-xs font-bold text-slate-900">
@@ -571,22 +594,23 @@ export const CollegeDashboard: React.FC<CollegeDashboardProps> = ({
                               <div className="flex items-center gap-2">
                                 <input
                                   type="text"
-                                  placeholder={post.claimCode || 'FL-0000'}
+                                  placeholder="Enter Student's Pickup Code"
                                   value={inputCode}
                                   onChange={(e) => setInputCode(e.target.value.toUpperCase())}
-                                  className="w-full text-xs uppercase font-mono px-3 py-1.5 rounded-lg border border-slate-300 font-bold focus:outline-emerald-500"
+                                  className="w-full text-xs uppercase font-mono px-3 py-1.5 rounded-lg border border-slate-300 font-bold focus:outline-emerald-500 placeholder:normal-case placeholder:font-normal placeholder:text-slate-400"
+                                  autoFocus
                                 />
                                 <button
                                   onClick={() => handleVerifySubmit(post.id)}
-                                  disabled={isSubmitting}
-                                  className="px-3 py-1.5 rounded-lg bg-emerald-600 text-white text-xs font-bold hover:bg-emerald-700"
+                                  disabled={isSubmitting || !inputCode.trim()}
+                                  className="px-3 py-1.5 rounded-lg bg-emerald-600 text-white text-xs font-bold hover:bg-emerald-700 disabled:opacity-50 cursor-pointer"
                                 >
                                   Confirm
                                 </button>
                               </div>
                               <button
-                                onClick={() => setVerifyingPostId(null)}
-                                className="text-[10px] text-slate-500 hover:text-slate-800"
+                                onClick={() => { setVerifyingPostId(null); setInputCode(''); }}
+                                className="text-[10px] text-slate-500 hover:text-slate-800 cursor-pointer"
                               >
                                 Cancel
                               </button>
@@ -594,7 +618,7 @@ export const CollegeDashboard: React.FC<CollegeDashboardProps> = ({
                           ) : (
                             <div className="flex items-center gap-2">
                               <button
-                                onClick={() => setVerifyingPostId(post.id)}
+                                onClick={() => { setVerifyingPostId(post.id); setInputCode(''); }}
                                 className="flex-1 py-2 px-3 rounded-xl font-bold text-xs bg-emerald-600 hover:bg-emerald-700 text-white flex items-center justify-center gap-1.5 shadow-xs transition-colors cursor-pointer"
                               >
                                 <Check className="w-4 h-4" />
